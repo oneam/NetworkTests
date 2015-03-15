@@ -1,0 +1,34 @@
+apply plugin: 'java'
+apply plugin: 'eclipse'
+
+sourceCompatibility = 1.8
+version = '1.0'
+jar {
+    manifest {
+        attributes 'Implementation-Title': 'Java Network Test', 'Implementation-Version': version
+    }
+}
+
+task(syncServer, dependsOn: 'classes', type: JavaExec) {
+    main = 'SynchronousEchoServer'
+    classpath = sourceSets.main.runtimeClasspath
+}
+
+task(asyncServer, dependsOn: 'classes', type: JavaExec) {
+    main = 'AsynchronousEchoServer'
+    classpath = sourceSets.main.runtimeClasspath
+}
+
+task(clients, dependsOn: 'classes', type: JavaExec) {
+    main = 'EchoClients'
+    classpath = sourceSets.main.runtimeClasspath
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    compile 'io.reactivex:rxjava:1.0.+'
+    compile 'io.reactivex:rxnetty:0.+'
+}
