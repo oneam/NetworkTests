@@ -1,6 +1,12 @@
 /build/
 /bin/
+/src/main/csharp/bin/
+/src/main/csharp/obj/
+/src/main/csharp/packages/
+/src/main/csharp/TestNetwork.sln
+/src/main/csharp/TestNetwork.userprefs
 .classpath
 .gradle
 .project
 .settings
+.DS_Store

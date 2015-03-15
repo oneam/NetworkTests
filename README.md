@@ -1,30 +1,45 @@
-# JavaNetworkTest
+# NetworkTests
 
 A study in various methods of creating an echo server and client.
+It was originally intended to see how ReactiveX would work with sockets
+and determine what the performance characteristics of synchronous and asynchoronous
+socket IO.
 
 ## Build instructions
+### Java
 ```
-$ git clone git@github.com:oneam/JavaNetworkTest.git
-$ cd JavaNetworkTest/
-$ ./gradlew <target>
+./gradlew clients
 ```
-
-There are three gradle targets available:
-
-### clients
-
 Starts all available clients. These clients attempt to connect to an echo server on localhost port 4726
 and send a small message as fast as poosible. (The message rate is displayed for each client)
 
-### syncServer
-
+```
+./gradlew syncServer
+```
 Starts an echo server that listens on port 4726. This server uses synchronous NIO sockets.
 
-### asyncServer
-
+```
+./gradlew asyncServer
+```
 Starts an echo server that listens on port 4726. This server uses asynchronous NIO and RxJava.
 
+### Go
+```
+cd src/main/go
+go run echo_server.go
+```
+Starts an echo server that listens on port 4726.
 
+```
+cd src/main/go
+go run echo_client.go
+```
+Starts an echo client that connects to localhost port 4726.
+
+### C# (Tested with Mono on Mac)
+**src/main/csharp/TestNetwork.csproj** is a project created using Xamarin Studio that uses NuGet packages for Rx.
+
+Starts an echo client that connects to localhost port 4726.
 
 ----------------------------------------------------------------------------
 **Copyright (c) 2015 Sam Leitch. All rights reserved.**
