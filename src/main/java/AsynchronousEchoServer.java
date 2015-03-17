@@ -1,11 +1,12 @@
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.AsynchronousServerSocketChannel;
 import java.nio.channels.AsynchronousSocketChannel;
 import java.util.concurrent.CountDownLatch;
 
-import rx.subjects.PublishSubject;
+import rx.Subscriber;
 
 public class AsynchronousEchoServer {
 
@@ -19,46 +20,52 @@ public class AsynchronousEchoServer {
     static void startAsyncServer() throws IOException, InterruptedException {
         CountDownLatch quit = new CountDownLatch(1);
         AsynchronousServerSocketChannel server = AsynchronousServerSocketChannel.open();
-        PublishSubject<Void> loop = PublishSubject.create();
         InetSocketAddress local = new InetSocketAddress(PORT);
         server.bind(local);
         System.out.printf("Async serv listening on %s\n", local);
 
-        loop
-                .flatMap(_void -> NioRx.<AsynchronousSocketChannel> wrap(server::accept))
+        NioRx.accepter(server)
                 .subscribe(
-                        client -> {
-                            handleAsyncConnection(client);
-                            loop.onNext(null);
+                        AsynchronousEchoServer::handleAsyncConnection,
+                        e -> {
+                            e.printStackTrace();
+                            quit.countDown();
                         },
-                        e -> e.printStackTrace(),
                         () -> quit.countDown());
 
-        loop.onNext(null);
         quit.await();
     }
 
     static void handleAsyncConnection(AsynchronousSocketChannel socket) {
-        try {
-            System.out.printf("Client connected from %s\n", socket.getRemoteAddress());
-        } catch (IOException e1) {
-            e1.printStackTrace();
-        }
+        SocketAddress remote = Utils.getRemoteAddress(socket);
 
-        ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE);
-        PublishSubject<Void> loop = PublishSubject.create();
-        loop
-                .flatMap(_void -> {
-                    buffer.clear();
-                    return NioRx.<ByteBuffer, Integer> wrap(socket::read, buffer);
-                })
-                .flatMap(bytesRead -> {
-                    buffer.flip();
-                    return NioRx.<ByteBuffer, Integer> wrap(socket::write, buffer);
-                })
-                .doOnTerminate(() -> Utils.closeAndLog(socket))
-                .subscribe(_bytesWritten -> loop.onNext(null), e -> e.printStackTrace());
+        System.out.printf("Client connected from %s\n", remote);
+        NioRx.reader(socket)
+                .subscribe(new Subscriber<byte[]>() {
 
-        loop.onNext(null);
+                    @Override
+                    public void onStart() {
+                        request(1);
+                    }
+
+                    @Override
+                    public void onCompleted() {
+                        System.out.printf("%s disconnected\n", remote);
+                        Utils.closeAndLog(socket);
+                    }
+
+                    @Override
+                    public void onError(Throwable e) {
+                        e.printStackTrace();
+                    }
+
+                    @Override
+                    public void onNext(byte[] t) {
+                        ByteBuffer buffer = ByteBuffer.wrap(t);
+                        NioRx.<ByteBuffer, Integer> wrap(socket::write, buffer)
+                                .doOnError(e -> e.printStackTrace())
+                                .subscribe(i -> request(1));
+                    }
+                });
     }
 }
