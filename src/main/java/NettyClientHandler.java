@@ -6,12 +6,12 @@ import io.netty.channel.ChannelInboundHandlerAdapter;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicLong;
 
-public class NettyHandler extends ChannelInboundHandlerAdapter {
+public class NettyClientHandler extends ChannelInboundHandlerAdapter {
 
     private final AtomicLong counter;
     private final byte[] messageBytes;
 
-    public NettyHandler(String message, AtomicLong counter) {
+    public NettyClientHandler(String message, AtomicLong counter) {
         this.messageBytes = message.getBytes(StandardCharsets.UTF_8);
         this.counter = counter;
     }

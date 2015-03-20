@@ -127,7 +127,7 @@ public class EchoClients {
                     @Override
                     public void initChannel(io.netty.channel.socket.SocketChannel ch) throws Exception {
                         ChannelPipeline p = ch.pipeline();
-                        p.addLast(new NettyHandler(MESSAGE, counter));
+                        p.addLast(new NettyClientHandler(MESSAGE, counter));
                     }
                 });
 
