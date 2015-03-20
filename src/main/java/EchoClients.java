@@ -1,3 +1,12 @@
+import io.netty.bootstrap.Bootstrap;
+import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelInitializer;
+import io.netty.channel.ChannelOption;
+import io.netty.channel.ChannelPipeline;
+import io.netty.channel.EventLoopGroup;
+import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.socket.nio.NioSocketChannel;
+
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
@@ -28,6 +37,7 @@ public class EchoClients {
         Observable.just(null).observeOn(Schedulers.newThread()).subscribe(v -> rawNioSync());
         rawNioAsync();
         rxNioAsync();
+        netty();
         quit.await();
     }
 
@@ -102,5 +112,28 @@ public class EchoClients {
         });
 
         NioRx.<SocketAddress, Void> wrap(socket::connect, remote).subscribe(loop::onNext, loop::onError);
+    }
+
+    public static void netty() throws InterruptedException {
+        AtomicLong counter = new AtomicLong();
+        counters.put("netty", counter);
+
+        EventLoopGroup group = new NioEventLoopGroup();
+        Bootstrap bootstrap = new Bootstrap();
+        bootstrap.group(group)
+                .channel(NioSocketChannel.class)
+                .option(ChannelOption.TCP_NODELAY, true)
+                .handler(new ChannelInitializer<io.netty.channel.socket.SocketChannel>() {
+                    @Override
+                    public void initChannel(io.netty.channel.socket.SocketChannel ch) throws Exception {
+                        ChannelPipeline p = ch.pipeline();
+                        p.addLast(new NettyHandler(MESSAGE, counter));
+                    }
+                });
+
+        ChannelFuture connectFuture = bootstrap.connect("localhost", PORT).sync();
+        connectFuture.channel().closeFuture().addListener(_future -> {
+            group.shutdownGracefully();
+        });
     }
 }
