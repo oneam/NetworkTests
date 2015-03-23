@@ -1,5 +1,5 @@
 /build/
-/bin/
+bin/
 /src/main/csharp/bin/
 /src/main/csharp/obj/
 /src/main/csharp/packages/
