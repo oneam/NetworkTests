@@ -38,16 +38,18 @@ void *client_loop(void *arg) {
         ssize_t send_size = send(sockd, buffer, msg_size, 0);
         if (send_size <= 0) {
             if(send_size < 0) {
-                perror("send error");
+                printf("%s send error: %s", name, strerror(errno));
             }
+            close(sockd);
             return NULL;
         }
         
         ssize_t recv_size = recv(sockd, buffer, BUFFER_SIZE, 0);
         if (recv_size <= 0) {
             if(recv_size < 0 && errno != EAGAIN) {
-                perror("recv error");
+                printf("%s recv error: %s", name, strerror(errno));
             }
+            close(sockd);
             return NULL;
         }
         
@@ -70,7 +72,7 @@ pthread_t start_client_loop(int sockd, const char *name) {
     pthread_t client_thread;
     int status = pthread_create(&client_thread, NULL, &client_loop, client_info);
     if (status != 0) {
-        perror("Client thread creation");
+        printf("%s client thread creation: %s", name, strerror(errno));
         exit(1);
     }
     
@@ -87,6 +89,7 @@ pthread_t start_tcp_client(struct sockaddr_in remote_addr) {
     int status = connect(sockd, (struct sockaddr*)&remote_addr, sizeof(remote_addr));
     if (status == -1) {
         perror("TCP connect error");
+        close(sockd);
         exit(1);
     }
     
@@ -103,6 +106,7 @@ pthread_t start_udp_client(struct sockaddr_in remote_addr) {
     int status = connect(sockd, (struct sockaddr*)&remote_addr, sizeof(remote_addr));
     if (status == -1) {
         perror("UDP connect error");
+        close(sockd);
         exit(1);
     }
     

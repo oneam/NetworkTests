@@ -51,6 +51,7 @@ pthread_t start_udp_server(struct sockaddr_in local_addr) {
     status = bind(server_sockd, (struct sockaddr*)&local_addr, sizeof(local_addr));
     if (status != 0) {
         perror("UDP bind error");
+        close(server_sockd);
         exit(1);
     }
     
@@ -108,6 +109,7 @@ void *tcp_server_loop(void *arg) {
         client_sockd = accept(server_sockd, (struct sockaddr *)&remote_addr, &remote_addr_len);
         if (client_sockd == -1) {
             perror("TCP accept error");
+            close(client_sockd);
             return NULL;
         }
         
@@ -138,12 +140,14 @@ pthread_t start_tcp_server(struct sockaddr_in local_addr) {
     status = bind(server_sockd, (struct sockaddr*)&local_addr, sizeof(local_addr));
     if (status != 0) {
         perror("TCP bind error");
+        close(server_sockd);
         exit(1);
     }
     
     status = listen(server_sockd, 10);
     if (status != 0) {
         perror("TCP listen error");
+        close(server_sockd);
         exit(1);
     }
     
