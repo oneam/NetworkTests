@@ -41,6 +41,21 @@ Starts an echo client that connects to localhost port 4726.
 
 Starts an echo client that connects to localhost port 4726.
 
+### C (Posix compliant)
+```
+cd src/main/c
+make
+bin/echo_server
+```
+Starts an echo server that listens on port 4726.
+
+```
+cd src/main/c
+make
+bin/echo_client
+```
+Starts an echo client that connects to localhost port 4726.
+
 ----------------------------------------------------------------------------
 **Copyright (c) 2015 Sam Leitch. All rights reserved.**
 
