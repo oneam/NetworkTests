@@ -6,7 +6,7 @@ namespace TestNetwork
 {
 	public static class SocketTask
 	{
-		public static Task<SocketAsyncEventArgs> Wrap(Socket socket, SocketAsyncEventArgs eventArgs, Func<SocketAsyncEventArgs, bool> action)
+		public static Task<SocketAsyncEventArgs> Wrap(Func<SocketAsyncEventArgs, bool> action, SocketAsyncEventArgs eventArgs)
 		{
 			var completionSource = new TaskCompletionSource<SocketAsyncEventArgs>();
 
@@ -14,72 +14,64 @@ namespace TestNetwork
 			onCompleted = (s, e) =>
 			{
 				eventArgs.Completed -= onCompleted;
-				Complete(eventArgs, completionSource);
+				if(eventArgs.SocketError == SocketError.Success)
+				{
+					completionSource.SetResult(eventArgs);
+				}
+				else
+				{
+					completionSource.SetException(new SocketException((int)eventArgs.SocketError));
+				}
 			};
 			eventArgs.Completed += onCompleted;
-			if(!action(eventArgs))
-			{
-				Complete(eventArgs, completionSource);
-			}
+			action(eventArgs);
 
 			return completionSource.Task;
 		}
 
-		static void Complete(SocketAsyncEventArgs eventArgs, TaskCompletionSource<SocketAsyncEventArgs> completionSource)
-		{
-			if(eventArgs.SocketError == SocketError.Success)
-			{
-				completionSource.SetResult(eventArgs);
-			}
-			else
-			{
-				completionSource.SetException(new SocketException((int)eventArgs.SocketError));
-			}
-		}
-
 		public static Task<SocketAsyncEventArgs> AcceptTask(this Socket socket, SocketAsyncEventArgs eventArgs)
 		{
-			return Wrap(socket, eventArgs, socket.AcceptAsync);
+			return Wrap(socket.AcceptAsync, eventArgs);
 		}
 
 		public static Task<SocketAsyncEventArgs> ConnectTask(this Socket socket, SocketAsyncEventArgs eventArgs)
 		{
-			return Wrap(socket, eventArgs, socket.ConnectAsync);
+			return Wrap(socket.ConnectAsync, eventArgs);
 		}
 
 		public static Task<SocketAsyncEventArgs> DisconnectTask(this Socket socket, SocketAsyncEventArgs eventArgs)
 		{
-			return Wrap(socket, eventArgs, socket.DisconnectAsync);
+			return Wrap(socket.DisconnectAsync, eventArgs);
 		}
 
 		public static Task<SocketAsyncEventArgs> ReceiveTask(this Socket socket, SocketAsyncEventArgs eventArgs)
 		{
-			return Wrap(socket, eventArgs, socket.ReceiveAsync);
+			return Wrap(socket.ReceiveAsync, eventArgs);
 		}
 
 		public static Task<SocketAsyncEventArgs> ReceiveFromTask(this Socket socket, SocketAsyncEventArgs eventArgs)
 		{
-			return Wrap(socket, eventArgs, socket.ReceiveFromAsync);
+			return Wrap(socket.ReceiveFromAsync, eventArgs);
 		}
 
 		public static Task<SocketAsyncEventArgs> ReceiveMessageFromTask(this Socket socket, SocketAsyncEventArgs eventArgs)
 		{
-			return Wrap(socket, eventArgs, socket.ReceiveMessageFromAsync);
+			return Wrap(socket.ReceiveMessageFromAsync, eventArgs);
 		}
 
 		public static Task<SocketAsyncEventArgs> SendTask(this Socket socket, SocketAsyncEventArgs eventArgs)
 		{
-			return Wrap(socket, eventArgs, socket.SendAsync);
+			return Wrap(socket.SendAsync, eventArgs);
 		}
 
 		public static Task<SocketAsyncEventArgs> SendPacketsTask(this Socket socket, SocketAsyncEventArgs eventArgs)
 		{
-			return Wrap(socket, eventArgs, socket.SendPacketsAsync);
+			return Wrap(socket.SendPacketsAsync, eventArgs);
 		}
 
 		public static Task<SocketAsyncEventArgs> SendToTask(this Socket socket, SocketAsyncEventArgs eventArgs)
 		{
-			return Wrap(socket, eventArgs, socket.SendToAsync);
+			return Wrap(socket.SendToAsync, eventArgs);
 		}
 	}
 }

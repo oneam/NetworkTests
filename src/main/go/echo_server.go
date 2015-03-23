@@ -31,6 +31,30 @@ func handleConn(c net.Conn) {
   }
 }
 
+func handlePacketConn(c net.PacketConn) {
+  buffer := make([]byte, 1048576)
+  seen := make(map[string]int)
+
+  for {
+    bytesRead, addr, err := c.ReadFrom(buffer)
+    if err != nil {
+      log.Printf("Packet read error: %v", err)
+    }
+
+    client := addr.String()
+    i := seen[client]
+    if i == 0 {
+      seen[client] = 1
+      log.Printf("Received packet from %v", addr)
+    }
+
+    _, err = c.WriteTo(buffer[:bytesRead], addr)
+    if err != nil {
+      log.Printf("Packet write error: %v", err)
+    }
+  }
+}
+
 func closeAndLog(c net.Conn) {
   err := c.Close()
   if err != nil {
@@ -46,6 +70,13 @@ func main() {
   if err != nil {
     log.Fatalf("Listen error: %v", err)
   }
+
+  packetConn, err := net.ListenPacket("udp", port)
+  if err != nil {
+    log.Fatalf("Listen error: %v", err)
+  }
+
+  go handlePacketConn(packetConn)
 
   for {
     conn, err := listener.Accept()

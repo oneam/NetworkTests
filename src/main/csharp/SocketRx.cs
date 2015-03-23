@@ -2,14 +2,12 @@
 using System.Net.Sockets;
 using System.Reactive.Disposables;
 using System.Reactive.Linq;
-using System.Reactive;
-using System.Threading.Tasks;
 
 namespace TestNetwork
 {
 	public static class SocketRx
 	{
-		public static IObservable<SocketAsyncEventArgs> Wrap(Socket socket, SocketAsyncEventArgs eventArgs, Func<SocketAsyncEventArgs, bool> action)
+		public static IObservable<SocketAsyncEventArgs> Wrap(Func<SocketAsyncEventArgs, bool> action, SocketAsyncEventArgs eventArgs)
 		{
 			return Observable.Create<SocketAsyncEventArgs>(observer =>
 				{
@@ -17,73 +15,65 @@ namespace TestNetwork
 					onCompleted = (s, e) =>
 					{
 						eventArgs.Completed -= onCompleted;
-						Completed(eventArgs, observer);
+						if(eventArgs.SocketError == SocketError.Success)
+						{
+							observer.OnNext(eventArgs);
+							observer.OnCompleted();
+						}
+						else
+						{
+							observer.OnError(new SocketException((int)eventArgs.SocketError));
+						}
 					};
 					eventArgs.Completed += onCompleted;
-					if(!action(eventArgs))
-					{
-						Completed(eventArgs, observer);
-					}
+					action(eventArgs);
 					return Disposable.Empty;
 				});
 		}
 
-		private static void Completed(SocketAsyncEventArgs eventArgs, IObserver<SocketAsyncEventArgs> observer)
-		{
-			if(eventArgs.SocketError == SocketError.Success)
-			{
-				observer.OnNext(eventArgs);
-				observer.OnCompleted();
-			}
-			else
-			{
-				observer.OnError(new SocketException((int)eventArgs.SocketError));
-			}
-		}
-
 		public static IObservable<SocketAsyncEventArgs> AcceptRx(this Socket socket, SocketAsyncEventArgs eventArgs)
 		{
-			return Wrap(socket, eventArgs, socket.AcceptAsync);
+			return Wrap(socket.AcceptAsync, eventArgs);
 		}
 
 		public static IObservable<SocketAsyncEventArgs> ConnectRx(this Socket socket, SocketAsyncEventArgs eventArgs)
 		{
-			return Wrap(socket, eventArgs, socket.ConnectAsync);
+			return Wrap(socket.ConnectAsync, eventArgs);
 		}
 
 		public static IObservable<SocketAsyncEventArgs> DisconnectRx(this Socket socket, SocketAsyncEventArgs eventArgs)
 		{
-			return Wrap(socket, eventArgs, socket.DisconnectAsync);
+			return Wrap(socket.DisconnectAsync, eventArgs);
 		}
 
 		public static IObservable<SocketAsyncEventArgs> ReceiveRx(this Socket socket, SocketAsyncEventArgs eventArgs)
 		{
-			return Wrap(socket, eventArgs, socket.ReceiveAsync);
+			return Wrap(socket.ReceiveAsync, eventArgs);
 		}
 
 		public static IObservable<SocketAsyncEventArgs> ReceiveFromRx(this Socket socket, SocketAsyncEventArgs eventArgs)
 		{
-			return Wrap(socket, eventArgs, socket.ReceiveFromAsync);
+			return Wrap(socket.ReceiveFromAsync, eventArgs);
 		}
 
 		public static IObservable<SocketAsyncEventArgs> ReceiveMessageFromRx(this Socket socket, SocketAsyncEventArgs eventArgs)
 		{
-			return Wrap(socket, eventArgs, socket.ReceiveMessageFromAsync);
+			return Wrap(socket.ReceiveMessageFromAsync, eventArgs);
 		}
 
 		public static IObservable<SocketAsyncEventArgs> SendRx(this Socket socket, SocketAsyncEventArgs eventArgs)
 		{
-			return Wrap(socket, eventArgs, socket.SendAsync);
+			return Wrap(socket.SendAsync, eventArgs);
 		}
 
 		public static IObservable<SocketAsyncEventArgs> SendPacketsRx(this Socket socket, SocketAsyncEventArgs eventArgs)
 		{
-			return Wrap(socket, eventArgs, socket.SendPacketsAsync);
+			return Wrap(socket.SendPacketsAsync, eventArgs);
 		}
 
 		public static IObservable<SocketAsyncEventArgs> SendToRx(this Socket socket, SocketAsyncEventArgs eventArgs)
 		{
-			return Wrap(socket, eventArgs, socket.SendToAsync);
+			return Wrap(socket.SendToAsync, eventArgs);
 		}
 	}
 }
