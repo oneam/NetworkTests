@@ -48,7 +48,6 @@ namespace TestNetwork
 					var eventArgs = ReadEvents[socket];
 					ReadEvents.Remove(socket);
 					ProcessEventArgs(socket, eventArgs);
-					eventArgs.OnCompleted(socket, eventArgs);
 				}
 
 				foreach(Socket socket in checkWrite)
@@ -56,7 +55,6 @@ namespace TestNetwork
 					var eventArgs = WriteEvents[socket];
 					WriteEvents.Remove(socket);
 					ProcessEventArgs(socket, eventArgs);
-					eventArgs.OnCompleted(socket, eventArgs);
 				}
 			}
 		}
