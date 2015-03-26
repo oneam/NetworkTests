@@ -5,6 +5,8 @@ It was originally intended to see how ReactiveX would work with sockets
 and determine what the performance characteristics of synchronous and asynchoronous
 socket IO.
 
+For reference, I've discovered that each platform running at peak performance accounts for 25-50% throughput difference. However, full duplex communication accounted for a 1000% improvment on all platforms (except Go, which fell apart after atempting full duplex).
+
 ## Build instructions
 ### Java
 ```
