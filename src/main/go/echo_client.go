@@ -17,7 +17,7 @@ func closeAndLog(c net.Conn) {
   }
 }
 
-func tcpClient() {
+func startTcpClient() {
   address := "127.0.0.1:4726"
   log.Printf("Connecting to address %v...", address)
 
@@ -28,36 +28,43 @@ func tcpClient() {
 
   log.Printf("Connected via %v", conn.LocalAddr())
   buffer := make([]byte, 1048576)
-  message := []byte("message")
+  message := []byte("message\n")
   count := int64(0)
   
   update := time.Tick(time.Second)
   go func() {
     for range update {
       lastCount := atomic.SwapInt64(&count, 0)
-      log.Printf("TCP: %v", lastCount)
+      log.Printf("TCP: %v", lastCount / int64(len(message)))
     }
   }()
 
-  for {
-    atomic.AddInt64(&count, 1)
-    _, err = conn.Write(message)
-    if err != nil {
-      log.Printf("Write error: %v", err)
-      closeAndLog(conn)
-      break
+  go func() {
+    for {
+      _, writeErr := conn.Write(message)
+      if writeErr != nil {
+        log.Printf("Write error: %v", writeErr)
+        closeAndLog(conn)
+        break
+      }
     }
+  }()
 
-    _, err := conn.Read(buffer)
-    if err != nil {
-      log.Printf("Read error: %v", err)
-      closeAndLog(conn)
-      break
+  go func() {
+    for {
+      bytesRead, readErr := conn.Read(buffer)
+      if err != nil {
+        log.Printf("Read error: %v", readErr)
+        closeAndLog(conn)
+        break
+      }
+
+      atomic.AddInt64(&count, int64(bytesRead))
     }
-  }
+  }()
 }
 
-func udpClient() {
+func startUdpClient() {
   address := "127.0.0.1:4726"
   log.Printf("Connecting to UDP address %v...", address)
 
@@ -68,38 +75,45 @@ func udpClient() {
 
   log.Printf("Connected to UDP via %v", conn.LocalAddr())
   buffer := make([]byte, 1048576)
-  message := []byte("message")
+  message := []byte("message\n")
   count := int64(0)
   
   update := time.Tick(time.Second)
   go func() {
     for range update {
       lastCount := atomic.SwapInt64(&count, 0)
-      log.Printf("UDP: %v", lastCount)
+      log.Printf("UDP: %v", lastCount / int64(len(message)))
     }
   }()
 
-  for {
-    atomic.AddInt64(&count, 1)
-    _, err = conn.Write(message)
-    if err != nil {
-      log.Printf("Write error: %v", err)
-      closeAndLog(conn)
-      break
+  go func() {
+    for {
+      _, writeErr := conn.Write(message)
+      if writeErr != nil {
+        log.Printf("Write error: %v", writeErr)
+        closeAndLog(conn)
+        break
+      }
     }
+  }()
 
-    _, err := conn.Read(buffer)
-    if err != nil {
-      log.Printf("Read error: %v", err)
-      closeAndLog(conn)
-      break
+  go func() {
+    for {
+      bytesRead, readErr := conn.Read(buffer)
+      if err != nil {
+        log.Printf("Read error: %v", readErr)
+        closeAndLog(conn)
+        break
+      }
+
+      atomic.AddInt64(&count, int64(bytesRead))
     }
-  }
+  }()
 }
 
 func main() {
-  go tcpClient()
-  go udpClient()
+  startTcpClient()
+  // startUdpClient()
 
   done := make(chan os.Signal, 1)
   signal.Notify(done, syscall.SIGINT, syscall.SIGTERM)

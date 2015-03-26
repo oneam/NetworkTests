@@ -18,16 +18,27 @@ public class NettyClientHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void channelActive(ChannelHandlerContext ctx) {
+        writeLoop(ctx);
+    }
+
+    private void writeLoop(ChannelHandlerContext ctx) {
         ByteBuf messageBuffer = Unpooled.wrappedBuffer(messageBytes);
-        ctx.writeAndFlush(messageBuffer);
+        ctx.writeAndFlush(messageBuffer).addListener(f -> {
+            writeLoop(ctx);
+        });
+    }
+
+    @Override
+    public void channelWritabilityChanged(ChannelHandlerContext ctx) throws Exception {
+        ByteBuf messageBuffer = Unpooled.wrappedBuffer(messageBytes);
+        ctx.write(messageBuffer);
     }
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) {
-        counter.incrementAndGet();
-        ((ByteBuf) msg).release();
-        ByteBuf messageBuffer = Unpooled.wrappedBuffer(messageBytes);
-        ctx.writeAndFlush(messageBuffer);
+        ByteBuf buffer = (ByteBuf) msg;
+        counter.addAndGet(buffer.readableBytes());
+        buffer.release();
     }
 
     @Override

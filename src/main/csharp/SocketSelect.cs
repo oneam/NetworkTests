@@ -6,13 +6,16 @@ using System.Text;
 using System.Net;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Collections.Concurrent;
 
 namespace TestNetwork
 {
 	public static class SocketSelect
 	{
-		readonly static Dictionary<Socket, SocketSelectEventArgs> ReadEvents = new Dictionary<Socket, SocketSelectEventArgs>();
-		readonly static Dictionary<Socket, SocketSelectEventArgs> WriteEvents = new Dictionary<Socket, SocketSelectEventArgs>();
+		readonly static ConcurrentDictionary<Socket, SocketSelectEventArgs> ReadEvents = new ConcurrentDictionary<Socket, SocketSelectEventArgs>();
+		readonly static ConcurrentDictionary<Socket, SocketSelectEventArgs> WriteEvents = new ConcurrentDictionary<Socket, SocketSelectEventArgs>();
+		readonly static List<Socket> ReadChecks = new List<Socket>();
+		readonly static List<Socket> WriteChecks = new List<Socket>();
 		readonly static byte[] ResetMessage = Encoding.UTF8.GetBytes("reset");
 		readonly static Thread IoThread;
 		readonly static Socket ResetSocket;
@@ -34,200 +37,80 @@ namespace TestNetwork
 		{
 			while(true)
 			{
-				var checkRead = ReadEvents.Keys.ToList();
-				checkRead.Add(ResetSocket);
+				ReadChecks.Clear();
+				ReadChecks.AddRange(ReadEvents.Keys);
+				ReadChecks.Add(ResetSocket);
 
-				var checkWrite = WriteEvents.Keys.ToList();
+				WriteChecks.Clear();
+				WriteChecks.AddRange(WriteEvents.Keys);
 
-				Socket.Select(checkRead, checkWrite, null, -1);
+				Socket.Select(ReadChecks, WriteChecks, null, -1);
 
-				foreach(Socket socket in checkRead)
+				foreach(Socket socket in ReadChecks)
 				{
-					if(socket == ResetSocket)
-						continue;
-					var eventArgs = ReadEvents[socket];
-					ReadEvents.Remove(socket);
-					ProcessEventArgs(socket, eventArgs);
+					if(socket == ResetSocket) continue;
+					SocketSelectEventArgs eventArgs;
+					if(!ReadEvents.TryRemove(socket, out eventArgs)) continue;
+					ReceiveSelect(socket, eventArgs);
 				}
 
-				foreach(Socket socket in checkWrite)
+				foreach(Socket socket in WriteChecks)
 				{
-					var eventArgs = WriteEvents[socket];
-					WriteEvents.Remove(socket);
-					ProcessEventArgs(socket, eventArgs);
+					SocketSelectEventArgs eventArgs;
+					if(!WriteEvents.TryRemove(socket, out eventArgs)) continue;
+					SendSelect(socket, eventArgs);
 				}
 			}
-		}
-
-		static void ProcessEventArgs(Socket socket, SocketSelectEventArgs eventArgs)
-		{
-			switch(eventArgs.LastOperation)
-			{
-			case SocketAsyncOperation.Accept:
-				AcceptSelect(socket, eventArgs);
-				break;
-			case SocketAsyncOperation.Connect:
-				ConnectSelect(socket, eventArgs);
-				break;
-			case SocketAsyncOperation.Disconnect:
-				DisconnectSelect(socket, eventArgs);
-				break;
-			case SocketAsyncOperation.Receive:
-				ReceiveSelect(socket, eventArgs);
-				break;
-			case SocketAsyncOperation.ReceiveFrom:
-				ReceiveFromSelect(socket, eventArgs);
-				break;
-			case SocketAsyncOperation.Send:
-				SendSelect(socket, eventArgs);
-				break;
-			case SocketAsyncOperation.SendTo:
-				SendToSelect(socket, eventArgs);
-				break;
-			case SocketAsyncOperation.None:
-				break;
-			default:
-				throw new NotImplementedException(eventArgs.LastOperation.ToString());
-			}
-		}
-
-		public static bool AcceptSelect(this Socket socket, SocketSelectEventArgs eventArgs)
-		{
-			eventArgs.LastOperation = SocketAsyncOperation.Accept;
-
-			bool willComplete = socket.Poll(0, SelectMode.SelectRead);
-			if(willComplete)
-			{
-				eventArgs.AcceptSocket = socket.Accept();
-				eventArgs.OnCompleted(socket, eventArgs);
-			}
-			else
-			{
-				ReadEvents[socket] = eventArgs;
-				Reset();
-			}
-
-			return willComplete;
-		}
-
-		public static bool ConnectSelect(this Socket socket, SocketSelectEventArgs eventArgs)
-		{
-			eventArgs.LastOperation = SocketAsyncOperation.Connect;
-
-			if(!socket.Connected) socket.Connect(eventArgs.RemoteEndPoint);
-
-			bool willComplete = socket.Poll(0, SelectMode.SelectWrite);
-			if(willComplete)
-			{
-				eventArgs.OnCompleted(socket, eventArgs);
-			}
-			else
-			{
-				WriteEvents[socket] = eventArgs;
-				Reset();
-			}
-
-			return willComplete;
-		}
-
-		public static bool DisconnectSelect(this Socket socket, SocketSelectEventArgs eventArgs)
-		{
-			eventArgs.LastOperation = SocketAsyncOperation.Disconnect;
-
-			if(socket.Connected) socket.Disconnect(eventArgs.DisconnectReuseSocket);
-
-			bool willComplete = socket.Poll(0, SelectMode.SelectRead);
-			if(willComplete)
-			{
-				eventArgs.OnCompleted(socket, eventArgs);
-			}
-			else
-			{
-				ReadEvents[socket] = eventArgs;
-				Reset();
-			}
-
-			return willComplete;
 		}
 
 		public static bool ReceiveSelect(this Socket socket, SocketSelectEventArgs eventArgs)
 		{
-			if(!socket.Connected) throw new SocketException((int)SocketError.NotConnected);
-			eventArgs.LastOperation = SocketAsyncOperation.Receive;
+			SocketError err;
+			bool blocking = socket.Blocking;
+			socket.Blocking = false;
 
-			bool willComplete = socket.Poll(0, SelectMode.SelectRead);
-			if(willComplete)
-			{
-				eventArgs.BytesTransferred = socket.Receive(eventArgs.Buffer, eventArgs.Offset, eventArgs.Count, eventArgs.SocketFlags);
-				eventArgs.OnCompleted(socket, eventArgs);
-			}
-			else
-			{
-				ReadEvents[socket] = eventArgs;
-				Reset();
-			}
+			eventArgs.BytesTransferred = socket.Receive(eventArgs.Buffer, eventArgs.Offset, eventArgs.Count, eventArgs.SocketFlags, out err);
 
-			return willComplete;
-		}
+			socket.Blocking = blocking;
+			eventArgs.Error = err;
 
-		public static bool ReceiveFromSelect(this Socket socket, SocketSelectEventArgs eventArgs)
-		{
-			eventArgs.LastOperation = SocketAsyncOperation.ReceiveFrom;
-
-			bool willComplete = socket.Poll(0, SelectMode.SelectRead);
-			if(willComplete)
-			{
-				EndPoint remoteEndPoint = eventArgs.RemoteEndPoint;
-				eventArgs.BytesTransferred = socket.ReceiveFrom(eventArgs.Buffer, eventArgs.Offset, eventArgs.Count, eventArgs.SocketFlags, ref remoteEndPoint);
-				eventArgs.RemoteEndPoint = remoteEndPoint;
-				eventArgs.OnCompleted(socket, eventArgs);
-			}
-			else
+			bool wouldBlock = err == SocketError.WouldBlock;
+			if(wouldBlock)
 			{
 				ReadEvents[socket] = eventArgs;
 				Reset();
 			}
+			else
+			{
+				eventArgs.OnCompleted(socket, eventArgs);
+			}
 
-			return willComplete;
+			return wouldBlock;
 		}
 
 		public static bool SendSelect(this Socket socket, SocketSelectEventArgs eventArgs)
 		{
-			if(!socket.Connected) throw new SocketException((int)SocketError.NotConnected);
-			eventArgs.LastOperation = SocketAsyncOperation.Send;
+			SocketError err;
+			bool blocking = socket.Blocking;
+			socket.Blocking = false;
 
-			bool willComplete = socket.Poll(0, SelectMode.SelectWrite);
-			if(willComplete)
-			{
-				eventArgs.BytesTransferred = socket.Send(eventArgs.Buffer, eventArgs.Offset, eventArgs.Count, eventArgs.SocketFlags);
-				eventArgs.OnCompleted(socket, eventArgs);
-			}
-			else
-			{
-				WriteEvents[socket] = eventArgs;
-				Reset();
-			}
+			eventArgs.BytesTransferred = socket.Send(eventArgs.Buffer, eventArgs.Offset, eventArgs.Count, eventArgs.SocketFlags, out err);
 
-			return willComplete;
-		}
+			socket.Blocking = blocking;
+			eventArgs.Error = err;
 
-		public static bool SendToSelect(this Socket socket, SocketSelectEventArgs eventArgs)
-		{
-			eventArgs.LastOperation = SocketAsyncOperation.SendTo;
-
-			bool willComplete = socket.Poll(0, SelectMode.SelectWrite);
-			if(willComplete)
-			{
-				eventArgs.BytesTransferred = socket.SendTo(eventArgs.Buffer, eventArgs.Offset, eventArgs.Count, eventArgs.SocketFlags, eventArgs.RemoteEndPoint);
-				eventArgs.OnCompleted(socket, eventArgs);
-			}
-			else
+			bool wouldBlock = err == SocketError.WouldBlock;
+			if(wouldBlock)
 			{
 				WriteEvents[socket] = eventArgs;
 				Reset();
 			}
+			else
+			{
+				eventArgs.OnCompleted(socket, eventArgs);
+			}
 
-			return willComplete;
+			return wouldBlock;
 		}
 
 		public static Task<SocketSelectEventArgs> Wrap(Func<SocketSelectEventArgs, bool> action, SocketSelectEventArgs eventArgs)
@@ -246,39 +129,14 @@ namespace TestNetwork
 			return completionSource.Task;
 		}
 
-		public static Task<SocketSelectEventArgs> AcceptSelectTask(this Socket socket, SocketSelectEventArgs eventArgs)
-		{
-			return Wrap(socket.AcceptSelect, eventArgs);
-		}
-
-		public static Task<SocketSelectEventArgs> ConnectSelectTask(this Socket socket, SocketSelectEventArgs eventArgs)
-		{
-			return Wrap(socket.ConnectSelect, eventArgs);
-		}
-
-		public static Task<SocketSelectEventArgs> DisconnectSelectTask(this Socket socket, SocketSelectEventArgs eventArgs)
-		{
-			return Wrap(socket.DisconnectSelect, eventArgs);
-		}
-
 		public static Task<SocketSelectEventArgs> ReceiveSelectTask(this Socket socket, SocketSelectEventArgs eventArgs)
 		{
 			return Wrap(socket.ReceiveSelect, eventArgs);
 		}
 
-		public static Task<SocketSelectEventArgs> ReceiveFromSelectTask(this Socket socket, SocketSelectEventArgs eventArgs)
-		{
-			return Wrap(socket.ReceiveFromSelect, eventArgs);
-		}
-
 		public static Task<SocketSelectEventArgs> SendSelectTask(this Socket socket, SocketSelectEventArgs eventArgs)
 		{
 			return Wrap(socket.SendSelect, eventArgs);
-		}
-
-		public static Task<SocketSelectEventArgs> SendToSelectTask(this Socket socket, SocketSelectEventArgs eventArgs)
-		{
-			return Wrap(socket.SendToSelect, eventArgs);
 		}
 	}
 }

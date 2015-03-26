@@ -13,8 +13,8 @@ namespace TestNetwork
 	class MainClass
 	{
 		const int Port = 4726;
-		const int BufferSize = 1048576;
-		const string Value = "value";
+		const int BufferSize = 65536;
+		static readonly byte[] Message = Encoding.UTF8.GetBytes("Message\n");
 
 		public static void Main(string[] args)
 		{
@@ -23,9 +23,8 @@ namespace TestNetwork
 
 			Observable.Interval(TimeSpan.FromSeconds(1)).Subscribe(DisplayCounters);
 
-			Task.Factory.StartNew(SyncLoop, TaskCreationOptions.LongRunning);
-			Task.Factory.StartNew(SelectLoop, TaskCreationOptions.LongRunning);
-			Task.Factory.StartNew(PollLoop, TaskCreationOptions.LongRunning);
+			new Thread(SyncLoop).Start();
+			new Thread(SelectLoop).Start();
 			RxLoop();
 			AsyncLoop().ContinueWith(t => { if(t.IsFaulted) Console.WriteLine(t.Exception); });
 			AsyncSelectLoop().ContinueWith(t => { if(t.IsFaulted) Console.WriteLine(t.Exception); });
@@ -42,7 +41,7 @@ namespace TestNetwork
 			foreach(var counter in Counter.Counters)
 			{
 				long count = counter.Reset();
-				Console.WriteLine("{0}: {1}", counter.Name, count);
+				Console.WriteLine("{0}: {1}", counter.Name, count / Message.Length);
 			}
 		}
 
@@ -50,24 +49,33 @@ namespace TestNetwork
 		{
 			var counter = new Counter("Rx");
 			var socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
-			var eventArgs = new SocketAsyncEventArgs();
 			var buffer = new byte[BufferSize];
-			var valueLength = Encoding.UTF8.GetBytes(Value, 0, Value.Length, buffer, 0);
-			eventArgs.RemoteEndPoint = new IPEndPoint(IPAddress.Loopback, Port);
-			eventArgs.SetBuffer(buffer, 0, BufferSize);
-			var loop = new Subject<SocketAsyncEventArgs>();
-			loop
-				.Do(e => e.SetBuffer(0, valueLength))
+
+			var writeLoop = new Subject<SocketAsyncEventArgs>();
+			writeLoop
+				.Do(e => e.SetBuffer(Message, 0, Message.Length))
 				.SelectMany(socket.SendRx)
-				.Do(e => e.SetBuffer(0, BufferSize))
+				.Subscribe(writeLoop.OnNext, e => Console.WriteLine("Rx write failed: {0}", e));
+
+			var readLoop = new Subject<SocketAsyncEventArgs>();
+			readLoop
+				.Do(e => e.SetBuffer(buffer, 0, BufferSize))
 				.SelectMany(socket.ReceiveRx)
-				.Do(e => counter.Increment())
+				.Do(e => counter.Add(e.BytesTransferred))
 				.Finally(counter.Dispose)
-				.Subscribe(loop.OnNext, e => Console.WriteLine("Rx failed: {0}", e));
+				.Subscribe(readLoop.OnNext, e => Console.WriteLine("Rx failed: {0}", e));
 			
+			var connectEventArgs = new SocketAsyncEventArgs();
+			connectEventArgs.RemoteEndPoint = new IPEndPoint(IPAddress.Loopback, Port);
 			socket
-				.ConnectRx(eventArgs)
-				.Subscribe(loop.OnNext, loop.OnError);
+				.ConnectRx(connectEventArgs)
+				.Subscribe(e => {
+					var readEventArgs = new SocketAsyncEventArgs();
+					readLoop.OnNext(readEventArgs);
+
+					var writeEventArgs = new SocketAsyncEventArgs();
+					writeLoop.OnNext(writeEventArgs);
+				}, e => Console.WriteLine("Rx connect failed: {0}", e));
 		}
 
 		static async Task AsyncLoop()
@@ -77,44 +85,68 @@ namespace TestNetwork
 				var socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
 				var eventArgs = new SocketAsyncEventArgs();
 				var buffer = new byte[BufferSize];
-				var valueLength = Encoding.UTF8.GetBytes(Value, 0, Value.Length, buffer, 0);
 				eventArgs.RemoteEndPoint = new IPEndPoint(IPAddress.Loopback, Port);
 				eventArgs.SetBuffer(buffer, 0, BufferSize);
 				await socket.ConnectTask(eventArgs);
 
 				while(true)
 				{
-					eventArgs.SetBuffer(0, valueLength);
+					eventArgs.SetBuffer(Message, 0, Message.Length);
 					await socket.SendTask(eventArgs);
-					eventArgs.SetBuffer(0, BufferSize);
+					eventArgs.SetBuffer(buffer, 0, BufferSize);
 					await socket.ReceiveTask(eventArgs);
-					counter.Increment();
+					counter.Add(eventArgs.BytesTransferred);
 				}
 			}
 		}
 
-		static async Task AsyncSelectLoop()
+		static Task AsyncSelectLoop()
 		{
-			using(var counter = new Counter("AsyncSelect"))
+			var counter = new Counter("AsyncSelect");
+			var socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
+			var buffer = new byte[BufferSize];
+			var completion = new TaskCompletionSource<object>();
+
+			Action<SocketSelectEventArgs> writeLoop = null;
+			writeLoop = e => 
 			{
-				var socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
-				var eventArgs = new SocketSelectEventArgs();
-				var buffer = new byte[BufferSize];
-				var valueLength = Encoding.UTF8.GetBytes(Value, 0, Value.Length, buffer, 0);
-				eventArgs.RemoteEndPoint = new IPEndPoint(IPAddress.Loopback, Port);
-				eventArgs.SetBuffer(buffer, 0, BufferSize);
-				await socket.ConnectSelectTask(eventArgs);
-
-				while(true)
+				e.SetBuffer(Message, 0, Message.Length);
+				socket.SendSelectTask(e).ContinueWith(t => 
 				{
-					eventArgs.SetBuffer(0, valueLength);
-					await socket.SendSelectTask(eventArgs);
-					eventArgs.SetBuffer(0, BufferSize);
-					await socket.ReceiveSelectTask(eventArgs);
-					counter.Increment();
-				}
-			}
+					if(t.IsFaulted)
+					{
+						completion.SetException(t.Exception);
+						return;
+					}
+					writeLoop(t.Result);
+				});
+			};
 
+			Action<SocketSelectEventArgs> readLoop = null;
+			readLoop = e => 
+			{
+				e.SetBuffer(buffer, 0, BufferSize);
+				socket.ReceiveSelectTask(e).ContinueWith(t =>
+				{
+					if(t.IsFaulted)
+					{
+						completion.SetException(t.Exception);
+						return;
+					}
+					counter.Add(t.Result.BytesTransferred);
+					readLoop(t.Result);
+				});
+			};
+
+			socket.Connect(new IPEndPoint(IPAddress.Loopback, Port));
+
+			var readEventArgs = new SocketSelectEventArgs();
+			readLoop(readEventArgs);
+
+			var writeEventArgs = new SocketSelectEventArgs();
+			writeLoop(writeEventArgs);
+
+			return completion.Task.ContinueWith(t => counter.Dispose());
 		}
 
 		static void SyncLoop()
@@ -123,16 +155,31 @@ namespace TestNetwork
 			{
 				var socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
 				var buffer = new byte[BufferSize];
-				var valueLength = Encoding.UTF8.GetBytes(Value, 0, Value.Length, buffer, 0);
 
 				socket.Connect(new IPEndPoint(IPAddress.Loopback, Port));
 
-				while(true)
+				Thread send = new Thread(() =>
 				{
-					socket.Send(buffer, valueLength, SocketFlags.None);
-					socket.Receive(buffer);
-					counter.Increment();
-				}
+					while(true)
+					{
+						socket.Send(Message);
+					}
+				});
+
+				Thread receive = new Thread(() =>
+				{
+					while(true)
+					{
+						var bytesReceived = socket.Receive(buffer);
+						counter.Add(bytesReceived);
+					}
+				});
+
+				receive.Start();
+				send.Start();
+
+				receive.Join();
+				send.Join();
 			}
 		}
 
@@ -142,7 +189,8 @@ namespace TestNetwork
 			{
 				var socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
 				var buffer = new byte[BufferSize];
-				var valueLength = Encoding.UTF8.GetBytes(Value, 0, Value.Length, buffer, 0);
+				var checkRead = new List<Socket> { socket };
+				var checkWrite = new List<Socket> { socket };
 
 				socket.Connect(new IPEndPoint(IPAddress.Loopback, Port));
 
@@ -151,53 +199,24 @@ namespace TestNetwork
 
 				while(true)
 				{
-					int bytesSent = socket.Send(buffer, valueLength, SocketFlags.None);
-					if(bytesSent == 0)
+					SocketError sendError;
+					var bytesSent = socket.Send(Message, 0, Message.Length, SocketFlags.None, out sendError);
+
+					SocketError receiveError;
+					var bytesRead = socket.Receive(buffer, 0, buffer.Length, SocketFlags.None, out receiveError);
+
+					counter.Add(bytesRead);
+
+					if(bytesRead + bytesSent <= 0)
 					{
-						Socket.Select(null, new List<Socket> { socket }, null, -1);
-						continue;
+						checkRead.Clear();
+						checkRead.Add(socket);
+
+						checkWrite.Clear();
+						checkWrite.Add(socket);
+
+						Socket.Select(checkRead, checkWrite, null, -1);
 					}
-
-					if(socket.Available == 0)
-					{
-						Socket.Select(new List<Socket> { socket }, null, null, -1);
-					}
-					socket.Receive(buffer);
-
-					counter.Increment();
-				}
-			}
-		}
-
-		static void PollLoop()
-		{
-			using(var counter = new Counter("Poll"))
-			{
-				var socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
-				var buffer = new byte[BufferSize];
-				var valueLength = Encoding.UTF8.GetBytes(Value, 0, Value.Length, buffer, 0);
-
-				socket.Connect(new IPEndPoint(IPAddress.Loopback, Port));
-
-				// There is what appears to be a bug in Mono where this non-blocking Connect blocks indefinitely
-				socket.Blocking = false;
-
-				while(true)
-				{
-					int bytesSent = socket.Send(buffer, valueLength, SocketFlags.None);
-					if(bytesSent == 0)
-					{
-						socket.Poll(-1, SelectMode.SelectWrite);
-						continue;
-					}
-
-					if(socket.Available == 0)
-					{
-						socket.Poll(-1, SelectMode.SelectRead);
-					}
-					socket.Receive(buffer);
-
-					counter.Increment();
 				}
 			}
 		}

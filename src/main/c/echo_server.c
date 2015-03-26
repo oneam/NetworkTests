@@ -9,7 +9,7 @@
 #include <unistd.h>
 #include <pthread.h>
 
-#define BUFFER_SIZE 4096
+#define BUFFER_SIZE 65536
 #define HOST "0.0.0.0"
 #define PORT 4726
 

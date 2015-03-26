@@ -26,6 +26,11 @@ namespace TestNetwork
 			return Interlocked.Increment(ref Count);
 		}
 
+		public long Add(long value)
+		{
+			return Interlocked.Add(ref Count, value);
+		}
+
 		public long Reset()
 		{
 			return Interlocked.Exchange(ref Count, 0L);
