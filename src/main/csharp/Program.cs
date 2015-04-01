@@ -7,6 +7,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace TestNetwork
 {
@@ -23,11 +24,22 @@ namespace TestNetwork
 
 			Observable.Interval(TimeSpan.FromSeconds(1)).Subscribe(DisplayCounters);
 
-			new Thread(SyncLoop).Start();
-			new Thread(SelectLoop).Start();
-			RxLoop();
-			AsyncLoop().ContinueWith(t => { if(t.IsFaulted) Console.WriteLine(t.Exception); });
-			AsyncSelectLoop().ContinueWith(t => { if(t.IsFaulted) Console.WriteLine(t.Exception); });
+			foreach(int i in Enumerable.Range(0, 10))
+			{
+				new Thread(() => SyncLoop(i)).Start();
+				new Thread(() => SelectLoop(i)).Start();
+				RxLoop(i);
+				AsyncLoop(i).ContinueWith(t =>
+				{
+					if(t.IsFaulted)
+						Console.WriteLine(t.Exception);
+				});
+//				AsyncSelectLoop(i).ContinueWith(t =>
+//				{
+//					if(t.IsFaulted)
+//						Console.WriteLine(t.Exception);
+//				});
+			}
 
 			shutdown.WaitOne();
 		}
@@ -38,16 +50,19 @@ namespace TestNetwork
 				return;
 			
 			Console.WriteLine();
+			long total = 0;
 			foreach(var counter in Counter.Counters)
 			{
 				long count = counter.Reset();
 				Console.WriteLine("{0}: {1}", counter.Name, count / Message.Length);
+				total += count;
 			}
+			Console.WriteLine("Total: {0}", total / Message.Length);
 		}
 
-		static void RxLoop()
+		static void RxLoop(int i)
 		{
-			var counter = new Counter("Rx");
+			var counter = new Counter(String.Format("Rx {0}", i));
 			var socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
 			var buffer = new byte[BufferSize];
 
@@ -78,80 +93,82 @@ namespace TestNetwork
 				}, e => Console.WriteLine("Rx connect failed: {0}", e));
 		}
 
-		static async Task AsyncLoop()
+		static async Task AsyncLoop(int i)
 		{
-			using(var counter = new Counter("Async"))
-			{
-				var socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
-				var eventArgs = new SocketAsyncEventArgs();
-				var buffer = new byte[BufferSize];
-				eventArgs.RemoteEndPoint = new IPEndPoint(IPAddress.Loopback, Port);
-				eventArgs.SetBuffer(buffer, 0, BufferSize);
-				await socket.ConnectTask(eventArgs);
+			var socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
+			var eventArgs = new SocketAsyncEventArgs();
+			eventArgs.RemoteEndPoint = new IPEndPoint(IPAddress.Loopback, Port);
 
-				while(true)
-				{
-					eventArgs.SetBuffer(Message, 0, Message.Length);
-					await socket.SendTask(eventArgs);
-					eventArgs.SetBuffer(buffer, 0, BufferSize);
-					await socket.ReceiveTask(eventArgs);
-					counter.Add(eventArgs.BytesTransferred);
-				}
+			await socket.ConnectTask(eventArgs);
+			using(var counter = new Counter(String.Format("Async {0}", i)))
+			{
+				await Task.WhenAny(AsyncReceiveLoop(socket, counter), AsyncSendLoop(socket));
 			}
 		}
 
-		static Task AsyncSelectLoop()
+		static async Task AsyncReceiveLoop(Socket socket, Counter counter)
 		{
-			var counter = new Counter("AsyncSelect");
-			var socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
+			var eventArgs = new SocketAsyncEventArgs();
 			var buffer = new byte[BufferSize];
-			var completion = new TaskCompletionSource<object>();
 
-			Action<SocketSelectEventArgs> writeLoop = null;
-			writeLoop = e => 
+			while(true)
 			{
-				e.SetBuffer(Message, 0, Message.Length);
-				socket.SendSelectTask(e).ContinueWith(t => 
-				{
-					if(t.IsFaulted)
-					{
-						completion.SetException(t.Exception);
-						return;
-					}
-					writeLoop(t.Result);
-				});
-			};
+				eventArgs.SetBuffer(buffer, 0, BufferSize);
+				await socket.ReceiveTask(eventArgs);
+				counter.Add(eventArgs.BytesTransferred);
+			}
+		}	
 
-			Action<SocketSelectEventArgs> readLoop = null;
-			readLoop = e => 
+		static async Task AsyncSendLoop(Socket socket)
+		{
+			var eventArgs = new SocketAsyncEventArgs();
+
+			while(true)
 			{
-				e.SetBuffer(buffer, 0, BufferSize);
-				socket.ReceiveSelectTask(e).ContinueWith(t =>
-				{
-					if(t.IsFaulted)
-					{
-						completion.SetException(t.Exception);
-						return;
-					}
-					counter.Add(t.Result.BytesTransferred);
-					readLoop(t.Result);
-				});
-			};
+				eventArgs.SetBuffer(Message, 0, Message.Length);
+				await socket.SendTask(eventArgs);
+			}
+		}	
+
+		static async Task AsyncSelectLoop(int i)
+		{
+			var socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
 
 			socket.Connect(new IPEndPoint(IPAddress.Loopback, Port));
-
-			var readEventArgs = new SocketSelectEventArgs();
-			readLoop(readEventArgs);
-
-			var writeEventArgs = new SocketSelectEventArgs();
-			writeLoop(writeEventArgs);
-
-			return completion.Task.ContinueWith(t => counter.Dispose());
+			socket.Blocking = false;
+			using(var counter = new Counter(String.Format("AsyncSelect {0}", i)))
+			{
+				await Task.WhenAny(AsyncSelectReceiveLoop(socket, counter), AsyncSelectSendLoop(socket));
+			}
 		}
 
-		static void SyncLoop()
+		static async Task AsyncSelectReceiveLoop(Socket socket, Counter counter)
 		{
-			using(var counter = new Counter("Sync"))
+			var eventArgs = new SocketSelectEventArgs();
+			var buffer = new byte[BufferSize];
+
+			while(true)
+			{
+				eventArgs.SetBuffer(buffer, 0, BufferSize);
+				await socket.ReceiveSelectTask(eventArgs);
+				counter.Add(eventArgs.BytesTransferred);
+			}
+		}	
+
+		static async Task AsyncSelectSendLoop(Socket socket)
+		{
+			var eventArgs = new SocketSelectEventArgs();
+
+			while(true)
+			{
+				eventArgs.SetBuffer(Message, 0, Message.Length);
+				await socket.SendSelectTask(eventArgs);
+			}
+		}	
+
+		static void SyncLoop(int i)
+		{
+			using(var counter = new Counter(String.Format("Sync {0}", i)))
 			{
 				var socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
 				var buffer = new byte[BufferSize];
@@ -183,9 +200,9 @@ namespace TestNetwork
 			}
 		}
 
-		static void SelectLoop()
+		static void SelectLoop(int i)
 		{
-			using(var counter = new Counter("Select"))
+			using(var counter = new Counter(String.Format("Select {0}", i)))
 			{
 				var socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
 				var buffer = new byte[BufferSize];

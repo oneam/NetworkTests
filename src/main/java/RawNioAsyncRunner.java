@@ -10,12 +10,10 @@ class RawNioAsyncRunner {
             final AsynchronousSocketChannel socket,
             final ByteBuffer writeBuffer,
             final ByteBuffer readBuffer,
-            final byte[] messageBytes,
             final AtomicLong counter, final InetSocketAddress remote) {
         this.socket = socket;
         this.writeBuffer = writeBuffer;
         this.readBuffer = readBuffer;
-        this.messageBytes = messageBytes;
         this.counter = counter;
         this.remote = remote;
     }
@@ -23,7 +21,6 @@ class RawNioAsyncRunner {
     private final AsynchronousSocketChannel socket;
     private final ByteBuffer writeBuffer;
     private final ByteBuffer readBuffer;
-    private final byte[] messageBytes;
     private final AtomicLong counter;
     private final InetSocketAddress remote;
 
@@ -36,9 +33,7 @@ class RawNioAsyncRunner {
     }
 
     private void beginWrite() {
-        writeBuffer.clear();
-        writeBuffer.put(messageBytes);
-        writeBuffer.flip();
+        writeBuffer.rewind();
         socket.write(writeBuffer, null, endWrite);
     }
 
@@ -99,7 +94,6 @@ class RawNioAsyncRunner {
         private AsynchronousSocketChannel socket;
         private ByteBuffer writeBuffer;
         private ByteBuffer readBuffer;
-        private byte[] messageBytes;
         private AtomicLong counter;
         private InetSocketAddress remote;
 
@@ -118,11 +112,6 @@ class RawNioAsyncRunner {
             return this;
         }
 
-        public Builder withMessageBytes(byte[] messageBytes) {
-            this.messageBytes = messageBytes;
-            return this;
-        }
-
         public Builder withCounter(AtomicLong counter) {
             this.counter = counter;
             return this;
@@ -134,7 +123,7 @@ class RawNioAsyncRunner {
         }
 
         public RawNioAsyncRunner build() {
-            return new RawNioAsyncRunner(socket, writeBuffer, readBuffer, messageBytes, counter, remote);
+            return new RawNioAsyncRunner(socket, writeBuffer, readBuffer, counter, remote);
         }
     }
 }

@@ -12,7 +12,7 @@ namespace TestNetwork
 		public byte[] Buffer { get; internal set; }
 		public int Offset { get; internal set; }
 		public int Count { get; internal set; }
-		public SocketError Error { get; internal set; }
+		public SocketError SocketError { get; internal set; }
 
 		public event EventHandler<SocketSelectEventArgs> Completed;
 

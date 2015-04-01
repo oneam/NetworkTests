@@ -27,40 +27,43 @@ public class EchoClients {
     static final int PORT = 4726;
     static final int BUFFER_SIZE = 4096;
     static final String MESSAGE = "message\n";
+    static final byte[] MESSAGE_BYTES = MESSAGE.getBytes(StandardCharsets.UTF_8);
     static CountDownLatch quit = new CountDownLatch(1);
     static ConcurrentHashMap<String, AtomicLong> counters = new ConcurrentHashMap<>();
 
     public static void main(String[] args) throws Exception {
         Observable.interval(1, TimeUnit.SECONDS).subscribe(EchoClients::displayCounters);
-        rawNioSync();
-        rawNioAsync();
-        rxNioAsync();
-        netty();
+        for (int i = 0; i < 10; ++i) {
+            //            rawNioSync(i);
+            rawNioAsync(i);
+            //            rxNioAsync(i);
+            //            netty(i);
+        }
         quit.await();
     }
 
     public static void displayCounters(Long i) {
         System.out.println();
+        long sum = 0;
         for (Entry<String, AtomicLong> counter : counters.entrySet()) {
             String desc = counter.getKey();
-            Long count = counter.getValue().getAndSet(0) / MESSAGE.length();
+            long count = counter.getValue().getAndSet(0) / MESSAGE.length();
             System.out.printf("%s: %d\n", desc, count);
+            sum += count;
         }
+        System.out.printf("Sum: %d\n", sum);
     }
 
-    public static void rawNioSync() {
+    public static void rawNioSync(int i) {
         try {
             InetSocketAddress remote = new InetSocketAddress("localhost", PORT);
             SocketChannel socket = SocketChannel.open(remote);
 
             new Thread(() -> {
                 try {
-                    ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE);
-                    byte[] messageBytes = MESSAGE.getBytes(StandardCharsets.UTF_8);
+                    ByteBuffer buffer = ByteBuffer.wrap(MESSAGE_BYTES);
                     while (quit.getCount() > 0) {
-                        buffer.clear();
-                        buffer.put(messageBytes);
-                        buffer.flip();
+                        buffer.rewind();
                         socket.write(buffer);
                     }
                 } catch (Exception e) {
@@ -71,7 +74,7 @@ public class EchoClients {
             new Thread(() -> {
                 try {
                     AtomicLong counter = new AtomicLong();
-                    counters.put("rawNioSync", counter);
+                    counters.put(String.format("rawNioSync %d", i), counter);
                     ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE);
                     while (quit.getCount() > 0) {
                         buffer.clear();
@@ -88,15 +91,14 @@ public class EchoClients {
         }
     }
 
-    public static void rawNioAsync() throws IOException {
+    public static void rawNioAsync(int i) throws IOException {
         AtomicLong counter = new AtomicLong();
-        counters.put("rawNioAsync", counter);
+        counters.put(String.format("rawNioAsync %d", i), counter);
 
         RawNioAsyncRunner
                 .builder()
                 .withReadBuffer(ByteBuffer.allocate(BUFFER_SIZE))
-                .withWriteBuffer(ByteBuffer.allocate(BUFFER_SIZE))
-                .withMessageBytes(MESSAGE.getBytes(StandardCharsets.UTF_8))
+                .withWriteBuffer(ByteBuffer.wrap(MESSAGE_BYTES))
                 .withSocket(AsynchronousSocketChannel.open())
                 .withRemote(new InetSocketAddress("localhost", PORT))
                 .withCounter(counter)
@@ -104,7 +106,7 @@ public class EchoClients {
                 .start();
     }
 
-    public static void rxNioAsync() throws IOException {
+    public static void rxNioAsync(int i) throws IOException {
         AsynchronousSocketChannel socket = AsynchronousSocketChannel.open();
         InetSocketAddress remote = new InetSocketAddress("localhost", PORT);
 
@@ -121,7 +123,7 @@ public class EchoClients {
                 .subscribe(writeLoop::onNext, Throwable::printStackTrace);
 
         AtomicLong counter = new AtomicLong();
-        counters.put("rxNioAsync", counter);
+        counters.put(String.format("rxNioAsync %d", i), counter);
         ByteBuffer readBuffer = ByteBuffer.allocate(BUFFER_SIZE);
         PublishSubject<Integer> readLoop = PublishSubject.create();
         readLoop
@@ -139,9 +141,9 @@ public class EchoClients {
                 }, Throwable::printStackTrace);
     }
 
-    public static void netty() throws InterruptedException {
+    public static void netty(int i) throws InterruptedException {
         AtomicLong counter = new AtomicLong();
-        counters.put("netty", counter);
+        counters.put(String.format("netty %d", i), counter);
 
         EventLoopGroup group = new NioEventLoopGroup();
         Bootstrap bootstrap = new Bootstrap();

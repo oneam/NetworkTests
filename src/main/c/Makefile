@@ -1,7 +1,10 @@
-all: bin/echo_client bin/echo_server
+all: bin/echo_client bin/echo_server bin/echo_client_nonblock
 
 bin:
 	mkdir bin
+
+bin/echo_client_nonblock: bin echo_client_nonblock.c
+	cc -o bin/echo_client_nonblock echo_client_nonblock.c
 
 bin/echo_client: bin echo_client.c
 	cc -o bin/echo_client echo_client.c

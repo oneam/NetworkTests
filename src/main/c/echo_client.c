@@ -15,58 +15,56 @@
 #define HOST "127.0.0.1"
 #define PORT 4726
 #define MESSAGE "message\n"
+#define NUM_CLIENTS 10
 
-struct client_info_s {
-    int sockd;
+struct client_s {
+    int sock_fd;
     const char *name;
+    pthread_t recv_thread;
+    pthread_t send_thread;
 };
 
-typedef struct client_info_s client_info_t;
+typedef struct client_s * client_ref;
 
 void *send_loop(void *arg) {
-    client_info_t *client_info = (client_info_t *)arg;
-    int sockd = client_info->sockd;
-    const char *name = client_info->name;
+    client_ref client = (client_ref)arg;
+    int sock_fd = client->sock_fd;
+    const char *name = client->name;
     free(arg);
 
-    char buffer[BUFFER_SIZE];
-    size_t msg_size = strlen(MESSAGE);
-    strncpy(buffer, MESSAGE, BUFFER_SIZE);
-
-    time_t last_tick = time(NULL);
-    long count = 0;
+    char *msg = MESSAGE;
+    size_t msg_size = strlen(msg);
 
     while (true) {
-        
-        ssize_t send_size = send(sockd, buffer, msg_size, 0);
+        ssize_t send_size = send(sock_fd, msg, msg_size, 0);
         if (send_size <= 0) {
             if(send_size < 0) {
-                printf("%s send error: %s", name, strerror(errno));
+                fprintf(stderr, "%s send error: %s", name, strerror(errno));
             }
-            close(sockd);
+            close(sock_fd);
             return NULL;
         }
     }
 }
 
 void *recv_loop(void *arg) {
-    client_info_t *client_info = (client_info_t *)arg;
-    int sockd = client_info->sockd;
-    const char *name = client_info->name;
-    free(arg);
+    client_ref client = (client_ref)arg;
+    int sock_fd = client->sock_fd;
+    const char *name = client->name;
 
     char buffer[BUFFER_SIZE];
-    size_t msg_size = strlen(MESSAGE);
+    
     time_t last_tick = time(NULL);
+    size_t msg_size = strlen(MESSAGE);
     long count = 0;
 
     while (true) {
-        ssize_t recv_size = recv(sockd, buffer, BUFFER_SIZE, 0);
+        ssize_t recv_size = recv(sock_fd, buffer, BUFFER_SIZE, 0);
         if (recv_size <= 0) {
             if(recv_size < 0 && errno != EAGAIN) {
-                printf("%s recv error: %s", name, strerror(errno));
+                fprintf(stderr, "%s recv error: %s", name, strerror(errno));
             }
-            close(sockd);
+            close(sock_fd);
             return NULL;
         }
         
@@ -75,77 +73,57 @@ void *recv_loop(void *arg) {
         
         if (now > last_tick) {
             last_tick = now;
-            printf("%s: %ld\n\n", name, count / msg_size);
+            printf("%s: %ld\n", name, count / msg_size);
             count = 0;
         }
     }
 }
 
-pthread_t start_client_loop(int sockd, const char *name) {
-    int status;
-    client_info_t *send_info = malloc(sizeof(client_info_t));
-    send_info->sockd = sockd;
-    send_info->name = name;
-    
-    pthread_t send_thread;
-    status = pthread_create(&send_thread, NULL, &send_loop, send_info);
-    if (status != 0) {
-        printf("%s send thread creation: %s", name, strerror(errno));
-        exit(1);
-    }
-    
-    client_info_t *recv_info = malloc(sizeof(client_info_t));
-    recv_info->sockd = sockd;
-    recv_info->name = name;
-    
-    pthread_t recv_thread;
-    status = pthread_create(&recv_thread, NULL, &recv_loop, recv_info);
-    if (status != 0) {
-        printf("%s recv thread creation: %s", name, strerror(errno));
-        exit(1);
-    }
-    
-    return recv_thread;
+client_ref client_new(const char* name) {
+    client_ref client = (client_ref)malloc(sizeof(struct client_s));
+    client->name = name;
+    return client;
 }
 
-pthread_t start_tcp_client(struct sockaddr_in remote_addr) {
-    int sockd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (sockd == -1) {
+int client_start(client_ref client, struct sockaddr_in remote_addr) {
+    int status;
+
+    int sock_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (sock_fd == -1) {
         perror("TCP socket creation");
-        exit(1);
+        return -1;
     }
+
+    client->sock_fd = sock_fd;
     
-    int status = connect(sockd, (struct sockaddr*)&remote_addr, sizeof(remote_addr));
+    status = connect(sock_fd, (struct sockaddr*)&remote_addr, sizeof(remote_addr));
     if (status == -1) {
         perror("TCP connect error");
-        close(sockd);
-        exit(1);
+        close(sock_fd);
+        return -1;
     }
     
-    return start_client_loop(sockd, "TCP");
+    status = pthread_create(&client->send_thread, NULL, &send_loop, client);
+    if (status != 0) {
+        fprintf(stderr, "%s send thread creation: %s", client->name, strerror(errno));
+        close(sock_fd);
+        return -1;
+    }
+    
+    pthread_t recv_thread;
+    status = pthread_create(&client->recv_thread, NULL, &recv_loop, client);
+    if (status != 0) {
+        fprintf(stderr, "%s recv thread creation: %s", client->name, strerror(errno));
+        close(sock_fd);
+        return -1;
+    }
+
+    return 0;
 }
 
-pthread_t start_udp_client(struct sockaddr_in remote_addr) {
-    int sockd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-    if (sockd == -1) {
-        perror("UDP socket creation");
-        exit(1);
-    }
-    
-    int status = connect(sockd, (struct sockaddr*)&remote_addr, sizeof(remote_addr));
-    if (status == -1) {
-        perror("UDP connect error");
-        close(sockd);
-        exit(1);
-    }
-    
-    struct timeval timeout;
-    timeout.tv_sec = 1;
-    timeout.tv_usec = 0;
-    
-    setsockopt(sockd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-    
-    return start_client_loop(sockd, "UDP");
+void client_wait(client_ref client) {
+    pthread_join(client->send_thread, NULL);
+    pthread_join(client->recv_thread, NULL);
 }
 
 int main (int argc, char* argv[]) {
@@ -154,9 +132,22 @@ int main (int argc, char* argv[]) {
     remote_addr.sin_addr.s_addr = inet_addr(HOST);
     remote_addr.sin_port = htons(PORT);
     
-    pthread_t tcp_thread = start_tcp_client(remote_addr);
-    // pthread_t udp_thread = start_udp_client(remote_addr);
+    client_ref clients[NUM_CLIENTS];
     
-    pthread_join(tcp_thread, NULL);
-    // pthread_join(udp_thread, NULL);
+    for(int i=0; i<NUM_CLIENTS; ++i) {
+        char *name = calloc(sizeof(char), 256);
+        sprintf(name, "Client %d", i);
+        
+        client_ref client = client_new(name);
+        if(client_start(client, remote_addr) < 0) {
+            exit(1);
+        }
+
+        clients[i] = client;
+    }
+    
+    for(int i=0; i<NUM_CLIENTS; ++i) {
+        client_ref client = clients[i];
+        client_wait(client);
+    }
 }

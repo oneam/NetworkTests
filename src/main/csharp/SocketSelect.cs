@@ -25,6 +25,7 @@ namespace TestNetwork
 			ResetSocket = new Socket(SocketType.Dgram, ProtocolType.Udp);
 			ResetSocket.Bind(new IPEndPoint(IPAddress.Loopback, 0));
 			IoThread = new Thread(IoLoop);
+			IoThread.Name = "Select IO Thread";
 			IoThread.Start();
 		}
 
@@ -66,15 +67,10 @@ namespace TestNetwork
 		public static bool ReceiveSelect(this Socket socket, SocketSelectEventArgs eventArgs)
 		{
 			SocketError err;
-			bool blocking = socket.Blocking;
-			socket.Blocking = false;
-
 			eventArgs.BytesTransferred = socket.Receive(eventArgs.Buffer, eventArgs.Offset, eventArgs.Count, eventArgs.SocketFlags, out err);
+			eventArgs.SocketError = err;
 
-			socket.Blocking = blocking;
-			eventArgs.Error = err;
-
-			bool wouldBlock = err == SocketError.WouldBlock;
+			bool wouldBlock = eventArgs.BytesTransferred == 0;
 			if(wouldBlock)
 			{
 				ReadEvents[socket] = eventArgs;
@@ -91,15 +87,10 @@ namespace TestNetwork
 		public static bool SendSelect(this Socket socket, SocketSelectEventArgs eventArgs)
 		{
 			SocketError err;
-			bool blocking = socket.Blocking;
-			socket.Blocking = false;
-
 			eventArgs.BytesTransferred = socket.Send(eventArgs.Buffer, eventArgs.Offset, eventArgs.Count, eventArgs.SocketFlags, out err);
+			eventArgs.SocketError = err;
 
-			socket.Blocking = blocking;
-			eventArgs.Error = err;
-
-			bool wouldBlock = err == SocketError.WouldBlock;
+			bool wouldBlock = eventArgs.BytesTransferred == 0;
 			if(wouldBlock)
 			{
 				WriteEvents[socket] = eventArgs;
@@ -121,7 +112,14 @@ namespace TestNetwork
 			onCompleted = (s, e) =>
 			{
 				eventArgs.Completed -= onCompleted;
-				completionSource.SetResult(eventArgs);
+				if(eventArgs.SocketError == SocketError.Success)
+				{
+					completionSource.SetResult(eventArgs);
+				}
+				else
+				{
+					completionSource.SetException(new SocketException((int)eventArgs.SocketError));
+				}
 			};
 			eventArgs.Completed += onCompleted;
 			action(eventArgs);
