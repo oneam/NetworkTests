@@ -35,11 +35,7 @@ public class AsyncEchoServer {
                 @Override
                 public void failed(Throwable exc, AsynchronousServerSocketChannel server) {
                     exc.printStackTrace();
-                    try {
-                        server.close();
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
+                    Utils.closeAndLog(server);
                 }
 
                 @Override
@@ -80,11 +76,7 @@ public class AsyncEchoServer {
                 @Override
                 public void failed(Throwable exc, Client client) {
                     exc.printStackTrace();
-                    try {
-                        client.socket.close();
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
+                    Utils.closeAndLog(client.socket);
                 }
             };
 
@@ -104,11 +96,7 @@ public class AsyncEchoServer {
                 @Override
                 public void failed(Throwable exc, Client client) {
                     exc.printStackTrace();
-                    try {
-                        client.socket.close();
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
+                    Utils.closeAndLog(client.socket);
                 }
             };
 }
