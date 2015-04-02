@@ -11,7 +11,7 @@ import rx.Subscriber;
 public class AsynchronousEchoServer {
 
     public static final int PORT = 4726;
-    public static final int BUFFER_SIZE = 4096;
+    public static final int BUFFER_SIZE = 65536;
 
     public static void main(String[] args) throws Exception {
         startAsyncServer();
@@ -38,10 +38,11 @@ public class AsynchronousEchoServer {
 
     static void handleAsyncConnection(AsynchronousSocketChannel socket) {
         SocketAddress remote = Utils.getRemoteAddress(socket);
+        ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE);
 
         System.out.printf("Client connected from %s\n", remote);
-        NioRx.reader(socket)
-                .subscribe(new Subscriber<byte[]>() {
+        NioRx.reader(socket, buffer)
+                .subscribe(new Subscriber<ByteBuffer>() {
 
                     @Override
                     public void onStart() {
@@ -60,12 +61,13 @@ public class AsynchronousEchoServer {
                     }
 
                     @Override
-                    public void onNext(byte[] t) {
-                        ByteBuffer buffer = ByteBuffer.wrap(t);
+                    public void onNext(ByteBuffer t) {
+                        t.flip();
                         NioRx.<ByteBuffer, Integer> wrap(socket::write, buffer)
-                                .doOnError(e -> e.printStackTrace())
-                                .toBlocking()
-                                .forEach(i -> request(1));
+                                .subscribe(i -> {
+                                    t.clear();
+                                    request(1);
+                                }, Throwable::printStackTrace);
                     }
                 });
     }

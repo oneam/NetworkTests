@@ -120,12 +120,13 @@ int client_start(client_ref client, struct sockaddr_in remote_addr) {
 }
 
 int main (int argc, char* argv[]) {
-    char *host = argc >= 1 ? argv[1] : HOST;
+    char *host = (argc > 1) ? argv[1] : HOST;
+    int port = (argc > 2) ? atoi(argv[2]) : PORT;
 
     struct sockaddr_in remote_addr;
     remote_addr.sin_family = AF_INET;
     remote_addr.sin_addr.s_addr = inet_addr(host);
-    remote_addr.sin_port = htons(PORT);
+    remote_addr.sin_port = htons(port);
     
     char* name_prefix = "Client";
     size_t name_len = strlen(name_prefix) + sizeof(char) * 8;

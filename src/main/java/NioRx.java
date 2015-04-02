@@ -19,9 +19,8 @@ public class NioRx {
      * @param socket The socket that will be read on.
      * @return An Observable that, when subscribed, reads from the socket until unsubscribed.
      */
-    public static Observable<byte[]> reader(final AsynchronousSocketChannel socket) {
+    public static Observable<ByteBuffer> reader(final AsynchronousSocketChannel socket, ByteBuffer buffer) {
         return Observable.create(s -> {
-            ByteBuffer buffer = ByteBuffer.allocate(4096);
             PublishSubject<Void> loop = PublishSubject.create();
             BackPressureValve backPressure = new BackPressureValve(() -> loop.onNext(null));
             loop
@@ -30,7 +29,6 @@ public class NioRx {
                             return Observable.empty();
                         }
 
-                        buffer.clear();
                         return NioRx.<ByteBuffer, Integer> wrap(socket::read, buffer);
                     }).subscribe(bytesRead -> {
                         if (s.isUnsubscribed()) {
@@ -42,10 +40,7 @@ public class NioRx {
                             return;
                         }
 
-                        byte[] bytes = new byte[bytesRead];
-                        buffer.flip();
-                        buffer.get(bytes);
-                        s.onNext(bytes);
+                        s.onNext(buffer);
 
                         backPressure.attemptOnNext();
                     }, s::onError);

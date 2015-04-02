@@ -135,12 +135,13 @@ void client_wait(client_ref client) {
 }
 
 int main (int argc, char* argv[]) {
-    char *host = argc >= 1 ? argv[1] : HOST;
+    char *host = (argc > 1) ? argv[1] : HOST;
+    int port = (argc > 2) ? atoi(argv[2]) : PORT;
     
     struct sockaddr_in remote_addr;
     remote_addr.sin_family = AF_INET;
     remote_addr.sin_addr.s_addr = inet_addr(host);
-    remote_addr.sin_port = htons(PORT);
+    remote_addr.sin_port = htons(port);
     
     for(int i=0; i<NUM_CLIENTS; ++i) {
         char *name = calloc(sizeof(char), 256);
