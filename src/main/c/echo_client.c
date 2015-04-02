@@ -41,7 +41,7 @@ void *send_loop(void *arg) {
         ssize_t send_size = send(sock_fd, msg, msg_size, 0);
         if (send_size <= 0) {
             if(send_size < 0) {
-                fprintf(stderr, "%s send error: %s", name, strerror(errno));
+                fprintf(stderr, "%s send error: %s\n", name, strerror(errno));
             }
             close(sock_fd);
             return NULL;
@@ -60,7 +60,7 @@ void *recv_loop(void *arg) {
         ssize_t recv_size = recv(sock_fd, buffer, BUFFER_SIZE, 0);
         if (recv_size <= 0) {
             if(recv_size < 0 && errno != EAGAIN) {
-                fprintf(stderr, "%s recv error: %s", name, strerror(errno));
+                fprintf(stderr, "%s recv error: %s\n", name, strerror(errno));
             }
             close(sock_fd);
             return NULL;
@@ -114,14 +114,14 @@ int client_start(client_ref client, struct sockaddr_in remote_addr) {
     
     status = pthread_create(&client->send_thread, NULL, &send_loop, client);
     if (status != 0) {
-        fprintf(stderr, "%s send thread creation: %s", client->name, strerror(errno));
+        fprintf(stderr, "%s send thread creation: %s\n", client->name, strerror(errno));
         close(sock_fd);
         return -1;
     }
     
     status = pthread_create(&client->recv_thread, NULL, &recv_loop, client);
     if (status != 0) {
-        fprintf(stderr, "%s recv thread creation: %s", client->name, strerror(errno));
+        fprintf(stderr, "%s recv thread creation: %s\n", client->name, strerror(errno));
         close(sock_fd);
         return -1;
     }
@@ -158,7 +158,7 @@ int main (int argc, char* argv[]) {
     pthread_t status_thread;
     int status = pthread_create(&status_thread, NULL, &status_loop, NULL);
     if (status != 0) {
-        fprintf(stderr, "status thread creation: %s", strerror(errno));
+        fprintf(stderr, "status thread creation: %s\n", strerror(errno));
         exit(1);
     }
 

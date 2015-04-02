@@ -43,14 +43,14 @@ void* client_loop(void *arg) {
             
             ssize_t send_size = send(sock_fd, msg, msg_size, 0);
             if (send_size < 0 && errno != EAGAIN) {
-                printf("%s send error: %s", client->name, strerror(errno));
+                printf("%s send error: %s\n", client->name, strerror(errno));
                 close(sock_fd);
                 return NULL;
             }
             
             ssize_t recv_size = recv(sock_fd, buffer, BUFFER_SIZE, 0);
             if (recv_size < 0 && errno != EAGAIN) {
-                printf("%s recv error: %s", client->name, strerror(errno));
+                printf("%s recv error: %s\n", client->name, strerror(errno));
                 close(sock_fd);
                 return NULL;
             }
@@ -76,7 +76,7 @@ void* client_loop(void *arg) {
 void client_loop_start() {
     int status = pthread_create(&client_thread, NULL, &client_loop, &clients);
     if (status != 0) {
-        fprintf(stderr, "Client thread creation: %s", strerror(errno));
+        fprintf(stderr, "Client thread creation: %s\n", strerror(errno));
         exit(1);
     }
 }

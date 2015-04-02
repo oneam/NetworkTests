@@ -8,25 +8,25 @@ import java.util.concurrent.CountDownLatch;
 
 import rx.Subscriber;
 
-public class AsynchronousEchoServer {
+public class RxEchoServer {
 
     public static final int PORT = 4726;
     public static final int BUFFER_SIZE = 65536;
 
     public static void main(String[] args) throws Exception {
-        startAsyncServer();
+        startServer();
     }
 
-    static void startAsyncServer() throws IOException, InterruptedException {
+    static void startServer() throws IOException, InterruptedException {
         CountDownLatch quit = new CountDownLatch(1);
         AsynchronousServerSocketChannel server = AsynchronousServerSocketChannel.open();
         InetSocketAddress local = new InetSocketAddress(PORT);
         server.bind(local);
-        System.out.printf("Async serv listening on %s\n", local);
+        System.out.printf("Rx serv listening on %s\n", local);
 
         NioRx.accepter(server)
                 .subscribe(
-                        AsynchronousEchoServer::handleAsyncConnection,
+                        RxEchoServer::handleAsyncConnection,
                         e -> {
                             e.printStackTrace();
                             quit.countDown();

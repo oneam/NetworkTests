@@ -15,7 +15,12 @@ task(syncServer, dependsOn: 'classes', type: JavaExec) {
 }
 
 task(asyncServer, dependsOn: 'classes', type: JavaExec) {
-    main = 'AsynchronousEchoServer'
+    main = 'AsyncEchoServer'
+    classpath = sourceSets.main.runtimeClasspath
+}
+
+task(rxServer, dependsOn: 'classes', type: JavaExec) {
+    main = 'RxEchoServer'
     classpath = sourceSets.main.runtimeClasspath
 }
 

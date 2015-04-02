@@ -10,10 +10,10 @@ public class SynchronousEchoServer {
     public static final int BUFFER_SIZE = 4096;
 
     public static void main(String[] args) throws Exception {
-        startSyncServer();
+        startServer();
     }
 
-    static void startSyncServer() throws IOException {
+    static void startServer() throws IOException {
         try (ServerSocketChannel server = ServerSocketChannel.open()) {
             InetSocketAddress local = new InetSocketAddress(PORT);
             server.bind(local);
