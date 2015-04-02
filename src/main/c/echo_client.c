@@ -22,15 +22,17 @@ struct client_s {
     const char *name;
     pthread_t recv_thread;
     pthread_t send_thread;
+    long count;
 };
 
 typedef struct client_s * client_ref;
+
+client_ref clients[NUM_CLIENTS];
 
 void *send_loop(void *arg) {
     client_ref client = (client_ref)arg;
     int sock_fd = client->sock_fd;
     const char *name = client->name;
-    free(arg);
 
     char *msg = MESSAGE;
     size_t msg_size = strlen(msg);
@@ -54,10 +56,6 @@ void *recv_loop(void *arg) {
 
     char buffer[BUFFER_SIZE];
     
-    time_t last_tick = time(NULL);
-    size_t msg_size = strlen(MESSAGE);
-    long count = 0;
-
     while (true) {
         ssize_t recv_size = recv(sock_fd, buffer, BUFFER_SIZE, 0);
         if (recv_size <= 0) {
@@ -68,14 +66,25 @@ void *recv_loop(void *arg) {
             return NULL;
         }
         
-        time_t now = time(NULL);
-        count += recv_size;
-        
-        if (now > last_tick) {
-            last_tick = now;
-            printf("%s: %ld\n", name, count / msg_size);
-            count = 0;
+        client->count += recv_size;
+    }
+}
+
+void *status_loop(void *arg) {
+    size_t msg_size = strlen(MESSAGE);
+    printf("%zu", msg_size);
+    
+    while(true) {
+        sleep(1);
+        long sum = 0;
+        for(int i=0; i<NUM_CLIENTS; ++i) {
+            client_ref client = clients[i];
+            long count = client->count;
+            client->count = 0;
+            printf("%s: %ld\n", client->name, count / msg_size);
+            sum += count;
         }
+        printf("Total: %ld\n", sum / msg_size);
     }
 }
 
@@ -110,7 +119,6 @@ int client_start(client_ref client, struct sockaddr_in remote_addr) {
         return -1;
     }
     
-    pthread_t recv_thread;
     status = pthread_create(&client->recv_thread, NULL, &recv_loop, client);
     if (status != 0) {
         fprintf(stderr, "%s recv thread creation: %s", client->name, strerror(errno));
@@ -132,8 +140,6 @@ int main (int argc, char* argv[]) {
     remote_addr.sin_addr.s_addr = inet_addr(HOST);
     remote_addr.sin_port = htons(PORT);
     
-    client_ref clients[NUM_CLIENTS];
-    
     for(int i=0; i<NUM_CLIENTS; ++i) {
         char *name = calloc(sizeof(char), 256);
         sprintf(name, "Client %d", i);
@@ -146,6 +152,13 @@ int main (int argc, char* argv[]) {
         clients[i] = client;
     }
     
+    pthread_t status_thread;
+    int status = pthread_create(&status_thread, NULL, &status_loop, NULL);
+    if (status != 0) {
+        fprintf(stderr, "status thread creation: %s", strerror(errno));
+        exit(1);
+    }
+
     for(int i=0; i<NUM_CLIENTS; ++i) {
         client_ref client = clients[i];
         client_wait(client);

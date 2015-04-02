@@ -13,108 +13,121 @@
 #define HOST "0.0.0.0"
 #define PORT 4726
 
+struct client_s {
+    int sock_fd;
+};
+
+typedef struct client_s *client_ref;
+
+client_ref client_new(int client_sock_fd) {
+    client_ref client = malloc(sizeof(struct client_s));
+    client->sock_fd = client_sock_fd;
+    return client;
+}
+
+void client_close(client_ref client) {
+    close(client->sock_fd);
+    free(client);
+}
+
 void *client_loop(void *arg) {
+    client_ref client = (client_ref)arg;
     char buffer[BUFFER_SIZE];
-    int sockd = *(int *)arg;
-    free(arg);
+    int sock_fd = client->sock_fd;
     
     while (true) {
-        ssize_t recv_size = recv(sockd, buffer, BUFFER_SIZE, 0);
+        ssize_t recv_size = recv(sock_fd, buffer, BUFFER_SIZE, 0);
         if (recv_size <= 0) {
             if(recv_size < 0) {
-                perror("TCP recv error");
+                perror("recv error");
             }
-            close(sockd);
+            client_close(client);
             return NULL;
         }
         
-        ssize_t send_size = send(sockd, buffer, recv_size, 0);
+        ssize_t send_size = send(sock_fd, buffer, recv_size, 0);
         if (send_size <= 0) {
             if(send_size < 0) {
-                perror("TCP send error");
+                perror("send error");
             }
-            close(sockd);
+            client_close(client);
             return NULL;
         }
     }
 }
 
-void *server_loop(void *arg) {
+int client_start(client_ref client) {
     int status;
-    int server_sockd = *(int *)arg;
-    free(arg);
-
-    while (true) {
-        int client_sockd;
-        struct sockaddr_in remote_addr;
-        socklen_t remote_addr_len = sizeof(remote_addr);
-        
-        client_sockd = accept(server_sockd, (struct sockaddr *)&remote_addr, &remote_addr_len);
-        if (client_sockd == -1) {
-            perror("TCP accept error");
-            close(client_sockd);
-            return NULL;
-        }
-        
-        printf("Connected to %s:%d\n", inet_ntoa(remote_addr.sin_addr), remote_addr.sin_port);
-        
-        pthread_t client_thread;
-        int *client_sockd_ref = malloc(sizeof(int));
-        *client_sockd_ref = client_sockd;
-        
-        status = pthread_create(&client_thread, NULL, &client_loop, client_sockd_ref);
-        if (status != 0) {
-            perror("TCP client thread creation error");
-            return NULL;
-        }
+    pthread_t client_thread;
+    
+    status = pthread_create(&client_thread, NULL, &client_loop, client);
+    if (status != 0) {
+        perror("client thread creation error");
+        return -1;
     }
+    
+    status = pthread_detach(client_thread);
+    if (status != 0) {
+        perror("client thread detach error");
+        return -1;
+    }
+    
+    return 0;
 }
 
-pthread_t start_server(struct sockaddr_in local_addr) {
-    int status;
-    int server_sockd;
-    
-    server_sockd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (server_sockd == -1) {
-        perror("TCP socket creation");
-        exit(1);
-    }
-    
-    status = bind(server_sockd, (struct sockaddr*)&local_addr, sizeof(local_addr));
-    if (status != 0) {
-        perror("TCP bind error");
-        close(server_sockd);
-        exit(1);
-    }
-    
-    status = listen(server_sockd, 10);
-    if (status != 0) {
-        perror("TCP listen error");
-        close(server_sockd);
-        exit(1);
-    }
-    
-    pthread_t server_thread;
-    int *server_sockd_ref = malloc(sizeof(int));
-    *server_sockd_ref = server_sockd;
-    
-    status = pthread_create(&server_thread, NULL, &server_loop, server_sockd_ref);
-    if (status != 0) {
-        perror("TCP server thread creation");
-        exit(1);
-    }
-    
-    printf("TCP listening on port %d\n", PORT);
-    
-    return server_thread;
-}
-
-int main(int argc, char* argv[]) {
+void server_start() {
     struct sockaddr_in local_addr;
     local_addr.sin_family = AF_INET;
     local_addr.sin_addr.s_addr = inet_addr(HOST);
     local_addr.sin_port = htons(PORT);
     
-    pthread_t tcp_server_thread = start_server(local_addr);
-    pthread_join(tcp_server_thread, NULL);
+    int server_sock_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (server_sock_fd == -1) {
+        perror("socket creation");
+        exit(1);
+    }
+    
+    int status;
+
+    status = bind(server_sock_fd, (struct sockaddr*)&local_addr, sizeof(local_addr));
+    if (status != 0) {
+        perror("bind error");
+        close(server_sock_fd);
+        exit(1);
+    }
+    
+    status = listen(server_sock_fd, 10);
+    if (status != 0) {
+        perror("listen error");
+        close(server_sock_fd);
+        exit(1);
+    }
+    
+    printf("listening on port %d\n", PORT);
+    
+    while (true) {
+        int client_sock_fd;
+        struct sockaddr_in remote_addr;
+        socklen_t remote_addr_len = sizeof(remote_addr);
+        
+        client_sock_fd = accept(server_sock_fd, (struct sockaddr *)&remote_addr, &remote_addr_len);
+        if (client_sock_fd == -1) {
+            perror("accept error");
+            close(client_sock_fd);
+            exit(1);
+        }
+        
+        printf("Connected to %s:%d\n", inet_ntoa(remote_addr.sin_addr), remote_addr.sin_port);
+        
+        client_ref client = client_new(client_sock_fd);
+        status = client_start(client);
+        if (status != 0) {
+            fprintf(stderr, "client start error");
+            exit(1);
+        }
+    }
+}
+
+int main(int argc, char* argv[]) {
+    server_start();
 }

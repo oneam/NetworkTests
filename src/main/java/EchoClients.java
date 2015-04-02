@@ -24,7 +24,7 @@ import rx.subjects.PublishSubject;
 
 public class EchoClients {
 
-    static final int PORT = 4726;
+    static final InetSocketAddress REMOTE = new InetSocketAddress("127.0.0.1", 4726);
     static final int BUFFER_SIZE = 4096;
     static final String MESSAGE = "message\n";
     static final byte[] MESSAGE_BYTES = MESSAGE.getBytes(StandardCharsets.UTF_8);
@@ -56,8 +56,7 @@ public class EchoClients {
 
     public static void rawNioSync(int i) {
         try {
-            InetSocketAddress remote = new InetSocketAddress("localhost", PORT);
-            SocketChannel socket = SocketChannel.open(remote);
+            SocketChannel socket = SocketChannel.open(REMOTE);
 
             new Thread(() -> {
                 try {
@@ -100,7 +99,7 @@ public class EchoClients {
                 .withReadBuffer(ByteBuffer.allocate(BUFFER_SIZE))
                 .withWriteBuffer(ByteBuffer.wrap(MESSAGE_BYTES))
                 .withSocket(AsynchronousSocketChannel.open())
-                .withRemote(new InetSocketAddress("localhost", PORT))
+                .withRemote(REMOTE)
                 .withCounter(counter)
                 .build()
                 .start();
@@ -108,7 +107,6 @@ public class EchoClients {
 
     public static void rxNioAsync(int i) throws IOException {
         AsynchronousSocketChannel socket = AsynchronousSocketChannel.open();
-        InetSocketAddress remote = new InetSocketAddress("localhost", PORT);
 
         ByteBuffer writeBuffer = ByteBuffer.allocate(BUFFER_SIZE);
         byte[] messageBytes = MESSAGE.getBytes(StandardCharsets.UTF_8);
@@ -134,7 +132,7 @@ public class EchoClients {
                 })
                 .subscribe(readLoop::onNext, Throwable::printStackTrace);
 
-        NioRx.<SocketAddress, Void> wrap(socket::connect, remote)
+        NioRx.<SocketAddress, Void> wrap(socket::connect, REMOTE)
                 .subscribe(_void -> {
                     writeLoop.onNext(0);
                     readLoop.onNext(0);
@@ -157,7 +155,7 @@ public class EchoClients {
                     }
                 });
 
-        ChannelFuture connectFuture = bootstrap.connect("localhost", PORT).sync();
+        ChannelFuture connectFuture = bootstrap.connect(REMOTE).sync();
         connectFuture.channel().closeFuture().addListener(_future -> {
             group.shutdownGracefully();
         });
