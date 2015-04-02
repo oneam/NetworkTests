@@ -135,9 +135,11 @@ void client_wait(client_ref client) {
 }
 
 int main (int argc, char* argv[]) {
+    char *host = argc >= 1 ? argv[1] : HOST;
+    
     struct sockaddr_in remote_addr;
     remote_addr.sin_family = AF_INET;
-    remote_addr.sin_addr.s_addr = inet_addr(HOST);
+    remote_addr.sin_addr.s_addr = inet_addr(host);
     remote_addr.sin_port = htons(PORT);
     
     for(int i=0; i<NUM_CLIENTS; ++i) {

@@ -64,7 +64,8 @@ public class AsynchronousEchoServer {
                         ByteBuffer buffer = ByteBuffer.wrap(t);
                         NioRx.<ByteBuffer, Integer> wrap(socket::write, buffer)
                                 .doOnError(e -> e.printStackTrace())
-                                .subscribe(i -> request(1));
+                                .toBlocking()
+                                .forEach(i -> request(1));
                     }
                 });
     }
