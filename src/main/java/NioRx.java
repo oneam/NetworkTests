@@ -1,6 +1,3 @@
-import java.nio.ByteBuffer;
-import java.nio.channels.AsynchronousServerSocketChannel;
-import java.nio.channels.AsynchronousSocketChannel;
 import java.nio.channels.CompletionHandler;
 
 import rx.Observable;
@@ -8,76 +5,8 @@ import rx.functions.Action2;
 import rx.functions.Action3;
 import rx.functions.Action5;
 import rx.functions.Action7;
-import rx.subjects.PublishSubject;
 
 public class NioRx {
-
-    /**
-     * Creates an Observable that, when subscribed, reads from the socket indefinitely.
-     * This socket implements backpressure for reads.
-     * 
-     * @param socket The socket that will be read on.
-     * @return An Observable that, when subscribed, reads from the socket until unsubscribed.
-     */
-    public static Observable<ByteBuffer> reader(final AsynchronousSocketChannel socket, ByteBuffer buffer) {
-        return Observable.create(s -> {
-            PublishSubject<Void> loop = PublishSubject.create();
-            BackPressureValve backPressure = new BackPressureValve(() -> loop.onNext(null));
-            loop
-                    .flatMap(bytes -> {
-                        if (s.isUnsubscribed()) {
-                            return Observable.empty();
-                        }
-
-                        return NioRx.<ByteBuffer, Integer> wrap(socket::read, buffer);
-                    }).subscribe(bytesRead -> {
-                        if (s.isUnsubscribed()) {
-                            return;
-                        }
-
-                        if (bytesRead == -1) {
-                            s.onCompleted();
-                            return;
-                        }
-
-                        s.onNext(buffer);
-
-                        backPressure.attemptOnNext();
-                    }, s::onError);
-
-            s.setProducer(backPressure);
-        });
-    }
-
-    /**
-     * Creates an Observable that, when subscribed, listens and accepts connection until unsubscribed.
-     *
-     * @param socket socket to listen on.
-     * @return An Observable that, when subscribed, listens and accepts connection until unsubscribed.
-     */
-    public static Observable<AsynchronousSocketChannel> accepter(final AsynchronousServerSocketChannel socket) {
-        return Observable.create(s -> {
-            PublishSubject<Void> loop = PublishSubject.create();
-            BackPressureValve backPressure = new BackPressureValve(() -> loop.onNext(null));
-            loop
-                    .flatMap(bytes -> {
-                        if (s.isUnsubscribed()) {
-                            return Observable.empty();
-                        }
-
-                        return NioRx.<AsynchronousSocketChannel> wrap(socket::accept);
-                    }).subscribe(client -> {
-                        if (s.isUnsubscribed()) {
-                            return;
-                        }
-
-                        s.onNext(client);
-                        backPressure.attemptOnNext();
-                    }, s::onError);
-
-            s.setProducer(backPressure);
-        });
-    }
 
     /**
      * Wraps an NIO asynchronous action in an Observable.

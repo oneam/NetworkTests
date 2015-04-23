@@ -1,5 +1,6 @@
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.StandardSocketOptions;
 import java.nio.ByteBuffer;
 import java.nio.channels.AsynchronousServerSocketChannel;
 import java.nio.channels.AsynchronousSocketChannel;
@@ -44,6 +45,11 @@ public class AsyncEchoServer {
                         AsynchronousServerSocketChannel serverSocket) {
                     System.out.printf("Connected to %s\n", Utils.getRemoteAddress(clientSocket));
                     beginAccept(serverSocket);
+                    try {
+                        clientSocket.setOption(StandardSocketOptions.TCP_NODELAY, true);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
                     ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE);
                     Client client = new Client(clientSocket, buffer);
                     beginRead(client);
@@ -64,39 +70,45 @@ public class AsyncEchoServer {
         client.socket.read(client.buffer, client, endRead);
     }
 
-    static final CompletionHandler<Integer, Client> endRead =
-            new CompletionHandler<Integer, Client>() {
+    static final CompletionHandler<Integer, Client> endRead = new CompletionHandler<Integer, Client>() {
 
-                @Override
-                public void completed(Integer result, Client client) {
-                    client.buffer.flip();
-                    beginWrite(client);
-                }
+        @Override
+        public void completed(Integer result, Client client) {
+            if (result == 0) {
+                Utils.closeAndLog(client.socket);
+                return;
+            }
+            client.buffer.flip();
+            beginWrite(client);
+        }
 
-                @Override
-                public void failed(Throwable exc, Client client) {
-                    exc.printStackTrace();
-                    Utils.closeAndLog(client.socket);
-                }
-            };
+        @Override
+        public void failed(Throwable exc, Client client) {
+            exc.printStackTrace();
+            Utils.closeAndLog(client.socket);
+        }
+    };
 
     static void beginWrite(Client client) {
         client.socket.write(client.buffer, client, endWrite);
     }
 
-    static final CompletionHandler<Integer, Client> endWrite =
-            new CompletionHandler<Integer, Client>() {
+    static final CompletionHandler<Integer, Client> endWrite = new CompletionHandler<Integer, Client>() {
 
-                @Override
-                public void completed(Integer result, Client client) {
-                    client.buffer.clear();
-                    beginRead(client);
-                }
+        @Override
+        public void completed(Integer result, Client client) {
+            if (result == 0) {
+                Utils.closeAndLog(client.socket);
+                return;
+            }
+            client.buffer.compact();
+            beginRead(client);
+        }
 
-                @Override
-                public void failed(Throwable exc, Client client) {
-                    exc.printStackTrace();
-                    Utils.closeAndLog(client.socket);
-                }
-            };
+        @Override
+        public void failed(Throwable exc, Client client) {
+            exc.printStackTrace();
+            Utils.closeAndLog(client.socket);
+        }
+    };
 }

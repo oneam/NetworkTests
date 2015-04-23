@@ -4,7 +4,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 
-public class SynchronousEchoServer {
+public class SyncEchoServer {
 
     public static final int PORT = 4726;
     public static final int BUFFER_SIZE = 4096;
@@ -31,10 +31,17 @@ public class SynchronousEchoServer {
         try {
             System.out.printf("Client connected from %s\n", socket.getRemoteAddress());
             while (true) {
-                buffer.clear();
-                socket.read(buffer);
+                int bytesRead = socket.read(buffer);
+                if (bytesRead <= 0) {
+                    break;
+                }
+
                 buffer.flip();
-                socket.write(buffer);
+                int bytesWritten = socket.write(buffer);
+                if (bytesWritten <= 0) {
+                    break;
+                }
+                buffer.compact();
             }
         } catch (IOException e) {
             e.printStackTrace();

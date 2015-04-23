@@ -6,7 +6,7 @@ import java.nio.channels.AsynchronousServerSocketChannel;
 import java.nio.channels.AsynchronousSocketChannel;
 import java.util.concurrent.CountDownLatch;
 
-import rx.Subscriber;
+import rx.subjects.PublishSubject;
 
 public class RxEchoServer {
 
@@ -22,53 +22,44 @@ public class RxEchoServer {
         AsynchronousServerSocketChannel server = AsynchronousServerSocketChannel.open();
         InetSocketAddress local = new InetSocketAddress(PORT);
         server.bind(local);
-        System.out.printf("Rx serv listening on %s\n", local);
+        System.out.printf("Rx server listening on %s\n", local);
 
-        NioRx.accepter(server)
+        PublishSubject<Void> acceptLoop = PublishSubject.create();
+        acceptLoop
+                .flatMap(_v -> NioRx.<AsynchronousSocketChannel> wrap(server::accept))
+                .map(RxEchoServer::onAccept)
                 .subscribe(
-                        RxEchoServer::handleAsyncConnection,
+                        acceptLoop::onNext,
                         e -> {
                             e.printStackTrace();
                             quit.countDown();
                         },
                         () -> quit.countDown());
 
+        acceptLoop.onNext(null);
         quit.await();
     }
 
-    static void handleAsyncConnection(AsynchronousSocketChannel socket) {
+    static Void onAccept(AsynchronousSocketChannel socket) {
         SocketAddress remote = Utils.getRemoteAddress(socket);
         ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE);
 
         System.out.printf("Client connected from %s\n", remote);
-        NioRx.reader(socket, buffer)
-                .subscribe(new Subscriber<ByteBuffer>() {
+        PublishSubject<Integer> clientLoop = PublishSubject.create();
+        clientLoop
+                .flatMap(_i -> NioRx.<ByteBuffer, Integer> wrap(socket::read, buffer))
+                .takeWhile(RxEchoServer::greaterThanZero)
+                .doOnNext(_i -> buffer.flip())
+                .flatMap(_i -> NioRx.<ByteBuffer, Integer> wrap(socket::write, buffer))
+                .takeWhile(RxEchoServer::greaterThanZero)
+                .doOnNext(_i -> buffer.compact())
+                .subscribe(clientLoop::onNext, Throwable::printStackTrace);
 
-                    @Override
-                    public void onStart() {
-                        request(1);
-                    }
+        clientLoop.onNext(0);
+        return null;
+    }
 
-                    @Override
-                    public void onCompleted() {
-                        System.out.printf("%s disconnected\n", remote);
-                        Utils.closeAndLog(socket);
-                    }
-
-                    @Override
-                    public void onError(Throwable e) {
-                        e.printStackTrace();
-                    }
-
-                    @Override
-                    public void onNext(ByteBuffer t) {
-                        t.flip();
-                        NioRx.<ByteBuffer, Integer> wrap(socket::write, buffer)
-                                .subscribe(i -> {
-                                    t.clear();
-                                    request(1);
-                                }, Throwable::printStackTrace);
-                    }
-                });
+    static boolean greaterThanZero(int value) {
+        return value > 0;
     }
 }

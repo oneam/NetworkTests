@@ -24,8 +24,23 @@ task(rxServer, dependsOn: 'classes', type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
 }
 
-task(clients, dependsOn: 'classes', type: JavaExec) {
-    main = 'EchoClients'
+task(asyncClient, dependsOn: 'classes', type: JavaExec) {
+    main = 'NioAsyncClient'
+    classpath = sourceSets.main.runtimeClasspath
+}
+
+task(syncClient, dependsOn: 'classes', type: JavaExec) {
+    main = 'NioSyncClient'
+    classpath = sourceSets.main.runtimeClasspath
+}
+
+task(rxClient, dependsOn: 'classes', type: JavaExec) {
+    main = 'RxClient'
+    classpath = sourceSets.main.runtimeClasspath
+}
+
+task(manyClients, dependsOn: 'classes', type: JavaExec) {
+    main = 'ManyConnectionsClient'
     classpath = sourceSets.main.runtimeClasspath
 }
 

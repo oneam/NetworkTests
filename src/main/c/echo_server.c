@@ -45,13 +45,17 @@ void *client_loop(void *arg) {
             return NULL;
         }
         
-        ssize_t send_size = send(sock_fd, buffer, recv_size, 0);
-        if (send_size <= 0) {
-            if(send_size < 0) {
-                perror("send error");
+        ssize_t total_sent = 0;
+        while(total_sent < recv_size) {
+            ssize_t send_size = send(sock_fd, buffer + total_sent, recv_size, 0);
+            if (send_size <= 0) {
+                if(send_size < 0) {
+                    perror("send error");
+                }
+                client_close(client);
+                return NULL;
             }
-            client_close(client);
-            return NULL;
+            total_sent += send_size;
         }
     }
 }
@@ -113,7 +117,7 @@ void server_start() {
         client_sock_fd = accept(server_sock_fd, (struct sockaddr *)&remote_addr, &remote_addr_len);
         if (client_sock_fd == -1) {
             perror("accept error");
-            close(client_sock_fd);
+            close(server_sock_fd);
             exit(1);
         }
         
