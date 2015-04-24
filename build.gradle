@@ -10,7 +10,7 @@ jar {
 }
 
 task(syncServer, dependsOn: 'classes', type: JavaExec) {
-    main = 'SynchronousEchoServer'
+    main = 'SyncEchoServer'
     classpath = sourceSets.main.runtimeClasspath
 }
 

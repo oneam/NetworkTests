@@ -55,7 +55,8 @@ public class RxClient {
 
     private Observable<Integer> read() {
         return NioRx.<ByteBuffer, Integer> wrap(socket::read, readBuffer)
-                .doOnNext(this::onNextRead);
+                .doOnNext(this::onNextRead)
+                .takeWhile(this::greaterThanZero);
     }
 
     private void onNextRead(int bytesRead) {
@@ -76,7 +77,8 @@ public class RxClient {
         writeBuffer.putLong(writeTime);
         writeBuffer.flip();
         return NioRx.<ByteBuffer, Integer> wrap(socket::write, writeBuffer)
-                .doOnNext(this::onNextWrite);
+                .doOnNext(this::onNextWrite)
+                .takeWhile(this::greaterThanZero);
     }
 
     private void onNextWrite(int bytesWritten) {
@@ -87,13 +89,11 @@ public class RxClient {
         PublishSubject<Integer> writeLoop = PublishSubject.create();
         writeLoop
                 .flatMap(_i -> write())
-                .takeWhile(this::greaterThanZero)
                 .subscribe(writeLoop::onNext, this::onError);
 
         PublishSubject<Integer> readLoop = PublishSubject.create();
         readLoop
                 .flatMap(_i -> read())
-                .takeWhile(this::greaterThanZero)
                 .subscribe(readLoop::onNext, this::onError);
 
         connect()
@@ -108,9 +108,7 @@ public class RxClient {
         PublishSubject<Integer> loop = PublishSubject.create();
         loop
                 .flatMap(_i -> write())
-                .takeWhile(this::greaterThanZero)
                 .flatMap(_i -> read())
-                .takeWhile(this::greaterThanZero)
                 .subscribe(loop::onNext, this::onError);
 
         connect()

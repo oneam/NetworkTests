@@ -18,7 +18,7 @@ public class RxEchoServer {
     }
 
     static void startServer() throws IOException, InterruptedException {
-        CountDownLatch quit = new CountDownLatch(1);
+        CountDownLatch quitLatch = new CountDownLatch(1);
         AsynchronousServerSocketChannel server = AsynchronousServerSocketChannel.open();
         InetSocketAddress local = new InetSocketAddress(PORT);
         server.bind(local);
@@ -30,14 +30,11 @@ public class RxEchoServer {
                 .map(RxEchoServer::onAccept)
                 .subscribe(
                         acceptLoop::onNext,
-                        e -> {
-                            e.printStackTrace();
-                            quit.countDown();
-                        },
-                        () -> quit.countDown());
+                        Throwable::printStackTrace);
 
+        acceptLoop.doOnTerminate(quitLatch::countDown);
         acceptLoop.onNext(null);
-        quit.await();
+        quitLatch.await();
     }
 
     static Void onAccept(AsynchronousSocketChannel socket) {
