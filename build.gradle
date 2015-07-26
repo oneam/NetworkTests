@@ -12,36 +12,43 @@ jar {
 task(syncServer, dependsOn: 'classes', type: JavaExec) {
     main = 'SyncEchoServer'
     classpath = sourceSets.main.runtimeClasspath
+    systemProperties System.getProperties()
 }
 
 task(asyncServer, dependsOn: 'classes', type: JavaExec) {
     main = 'AsyncEchoServer'
     classpath = sourceSets.main.runtimeClasspath
+    systemProperties System.getProperties()
 }
 
 task(rxServer, dependsOn: 'classes', type: JavaExec) {
     main = 'RxEchoServer'
     classpath = sourceSets.main.runtimeClasspath
+    systemProperties System.getProperties()
 }
 
 task(asyncClient, dependsOn: 'classes', type: JavaExec) {
     main = 'NioAsyncClient'
     classpath = sourceSets.main.runtimeClasspath
+    systemProperties System.getProperties()
 }
 
 task(syncClient, dependsOn: 'classes', type: JavaExec) {
     main = 'NioSyncClient'
     classpath = sourceSets.main.runtimeClasspath
+    systemProperties System.getProperties()
 }
 
 task(rxClient, dependsOn: 'classes', type: JavaExec) {
     main = 'RxClient'
     classpath = sourceSets.main.runtimeClasspath
+    systemProperties System.getProperties()
 }
 
 task(manyClients, dependsOn: 'classes', type: JavaExec) {
     main = 'ManyConnectionsClient'
     classpath = sourceSets.main.runtimeClasspath
+    systemProperties System.getProperties()
 }
 
 repositories {

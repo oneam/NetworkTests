@@ -128,13 +128,19 @@ public class RxClient {
     }
 
     public static void main(String[] args) throws Exception {
-        InetSocketAddress remote = new InetSocketAddress("localhost", 4726);
-        int numClients = 4;
+        String serverHostname = System.getProperty("server", "localhost");
+        int numClients = Integer.parseInt(System.getProperty("numClients", "4"));
+        String clientModeString = System.getProperty("clientMode", "full");
+        ClientMode clientMode = clientModeString.equals("full") ? ClientMode.FULL_DUPLEX : ClientMode.HALF_DUPLEX;
+
+        InetSocketAddress remote = new InetSocketAddress(serverHostname, 4726);
         Metrics metrics = new Metrics();
         metrics.start();
 
+        System.out.format("Connecting to %s with %d clients using %s\n", remote, numClients, clientMode);
+
         List<RxClient> clients = Stream
-                .generate(() -> new RxClient(remote, ClientMode.FULL_DUPLEX, metrics))
+                .generate(() -> new RxClient(remote, clientMode, metrics))
                 .limit(numClients)
                 .collect(Collectors.toList());
 

@@ -4,6 +4,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Semaphore;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -16,6 +17,7 @@ public class NioSyncClient {
     private final InetSocketAddress remote;
     private final ClientMode mode;
     private final Metrics metrics;
+    private final Semaphore limiter = new Semaphore(200);
 
     public NioSyncClient(InetSocketAddress remote, ClientMode mode, Metrics metrics) {
         this.remote = remote;
@@ -25,7 +27,6 @@ public class NioSyncClient {
 
     public void start() throws IOException {
         socket = SocketChannel.open(remote);
-        metrics.recordConnect();
         switch (mode) {
         case FULL_DUPLEX:
             new Thread(this::fullDuplexReadLoop).start();
@@ -39,7 +40,6 @@ public class NioSyncClient {
 
     public void close() {
         Utils.closeAndLog(socket);
-        metrics.recordDisconnect();
         closeLatch.countDown();
     }
 
@@ -60,12 +60,16 @@ public class NioSyncClient {
             long readTime = System.nanoTime();
             long latencyInNanos = readTime - writeTime;
             metrics.recordLatency(latencyInNanos);
+            metrics.recordDisconnect();
+            limiter.release();
         }
         readBuffer.compact();
         return bytesRead;
     }
 
-    private int write() throws IOException {
+    private int write() throws IOException, InterruptedException {
+        limiter.acquire();
+        metrics.recordConnect();
         long writeTime = System.nanoTime();
         writeBuffer.putLong(writeTime);
         writeBuffer.flip();
@@ -125,13 +129,19 @@ public class NioSyncClient {
     }
 
     public static void main(String[] args) throws Exception {
-        InetSocketAddress remote = new InetSocketAddress("localhost", 4726);
-        int numClients = 4;
+        String serverHostname = System.getProperty("server", "localhost");
+        int numClients = Integer.parseInt(System.getProperty("numClients", "4"));
+        String clientModeString = System.getProperty("clientMode", "full");
+        ClientMode clientMode = clientModeString.equals("full") ? ClientMode.FULL_DUPLEX : ClientMode.HALF_DUPLEX;
+
+        InetSocketAddress remote = new InetSocketAddress(serverHostname, 4726);
         Metrics metrics = new Metrics();
         metrics.start();
 
+        System.out.format("Connecting to %s with %d clients using %s\n", remote, numClients, clientMode);
+
         List<NioSyncClient> clients = Stream
-                .generate(() -> new NioSyncClient(remote, ClientMode.FULL_DUPLEX, metrics))
+                .generate(() -> new NioSyncClient(remote, clientMode, metrics))
                 .limit(numClients)
                 .collect(Collectors.toList());
 
