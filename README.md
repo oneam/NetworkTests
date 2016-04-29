@@ -5,7 +5,15 @@ It was originally intended to see how ReactiveX would work with sockets
 and determine what the performance characteristics of synchronous and asynchoronous
 socket IO.
 
-For reference, I've discovered that each platform running at peak performance accounts for 25-50% throughput difference. However, full duplex communication accounted for a 1000% improvment on all platforms (except Go, which fell apart after atempting full duplex).
+My Conclusions:
+
+* Development platform accounts for 25-50% throughput difference. (C being fastest)
+* Asynchronous IO only gave a performance boost when dealing with 1000s of open connections.
+  * A persistent thread connected a synchronous socket gives much higher throughput.
+* Full duplex communication provides up to a 1000% improvment on all platforms (except Go, which fell apart after atempting full duplex).
+  * Full duplex means read and write happen simltaneously and multiple requests can be "on the wire" simultaneously.
+* Performance appears to be limited by the number of calls to read() and write()
+  * By reading a large buffer of data and extracting all requests from that buffer you can greatly improve throughput.
 
 ## Build instructions
 ### Java
