@@ -14,10 +14,12 @@ public class NioSyncClient {
     private final CountDownLatch closeLatch = new CountDownLatch(1);
     ByteBuffer writeBuffer = ByteBuffer.allocate(1024);
     ByteBuffer readBuffer = ByteBuffer.allocate(65536);
+    byte[] garbage = "alkjdshfladfhalkdcjnaldjcbalejhfalkdjchalskdjcbalskdjcblwqeubc".getBytes();
     private final InetSocketAddress remote;
     private final ClientMode mode;
     private final Metrics metrics;
     private final Semaphore limiter = new Semaphore(200);
+    private short packetLength = -1;
 
     public NioSyncClient(InetSocketAddress remote, ClientMode mode, Metrics metrics) {
         this.remote = remote;
@@ -55,25 +57,40 @@ public class NioSyncClient {
         }
 
         readBuffer.flip();
-        while (readBuffer.remaining() >= 8) {
-            long writeTime = readBuffer.getLong();
+        while (readBuffer.remaining() >= 2) {
+            if (packetLength < 0) {
+                packetLength = readBuffer.getShort();
+            }
+
+            if (readBuffer.remaining() < packetLength) {
+                break;
+            }
+
+            ByteBuffer packetBuffer = ByteBuffer.allocate(packetLength);
+            readBuffer.put(packetBuffer);
+            packetBuffer.flip();
+            long writeTime = packetBuffer.getLong();
             long readTime = System.nanoTime();
             long latencyInNanos = readTime - writeTime;
             metrics.recordLatency(latencyInNanos);
             metrics.recordDisconnect();
+            packetLength = -1;
             limiter.release();
         }
         readBuffer.compact();
         return bytesRead;
     }
 
-    private int write() throws IOException, InterruptedException {
+    private long write() throws IOException, InterruptedException {
         limiter.acquire();
         metrics.recordConnect();
         long writeTime = System.nanoTime();
+        short length = (short) (8 + garbage.length);
+        writeBuffer.putShort(length);
         writeBuffer.putLong(writeTime);
         writeBuffer.flip();
-        int bytesWritten = socket.write(writeBuffer);
+        ByteBuffer paddingBuffer = ByteBuffer.wrap(garbage);
+        long bytesWritten = socket.write(new ByteBuffer[] { writeBuffer, paddingBuffer });
         writeBuffer.compact();
         return bytesWritten;
     }
@@ -81,7 +98,7 @@ public class NioSyncClient {
     private void fullDuplexWriteLoop() {
         try {
             while (true) {
-                int bytesWritten = write();
+                long bytesWritten = write();
                 if (bytesWritten <= 0) {
                     break;
                 }
@@ -111,7 +128,7 @@ public class NioSyncClient {
     private void halfDuplexLoop() {
         try {
             while (true) {
-                int bytesWritten = write();
+                long bytesWritten = write();
                 if (bytesWritten <= 0) {
                     break;
                 }
@@ -130,8 +147,8 @@ public class NioSyncClient {
 
     public static void main(String[] args) throws Exception {
         String serverHostname = System.getProperty("server", "localhost");
-        int numClients = Integer.parseInt(System.getProperty("numClients", "4"));
-        String clientModeString = System.getProperty("clientMode", "full");
+        int numClients = Integer.parseInt(System.getProperty("numClients", "12"));
+        String clientModeString = System.getProperty("clientMode", "half");
         ClientMode clientMode = clientModeString.equals("full") ? ClientMode.FULL_DUPLEX : ClientMode.HALF_DUPLEX;
 
         InetSocketAddress remote = new InetSocketAddress(serverHostname, 4726);

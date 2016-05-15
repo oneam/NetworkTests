@@ -141,8 +141,8 @@ class NioAsyncClient {
 
     static public void main(String[] args) throws Exception {
         String serverHostname = System.getProperty("server", "localhost");
-        int numClients = Integer.parseInt(System.getProperty("numClients", "4"));
-        String clientModeString = System.getProperty("clientMode", "full");
+        int numClients = Integer.parseInt(System.getProperty("numClients", "12"));
+        String clientModeString = System.getProperty("clientMode", "half");
         ClientMode clientMode = clientModeString.equals("full") ? ClientMode.FULL_DUPLEX : ClientMode.HALF_DUPLEX;
 
         InetSocketAddress remote = new InetSocketAddress(serverHostname, 4726);

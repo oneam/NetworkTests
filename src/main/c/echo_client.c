@@ -84,7 +84,7 @@ void *status_loop(void *arg) {
             printf("%s: %ld\n", client->name, count / msg_size);
             sum += count;
         }
-        printf("Total: %ld\n", sum / msg_size);
+        printf("Total: %ld messages/s\n", sum / msg_size);
     }
 }
 

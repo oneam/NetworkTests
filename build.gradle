@@ -51,11 +51,17 @@ task(manyClients, dependsOn: 'classes', type: JavaExec) {
     systemProperties System.getProperties()
 }
 
+task(nettyClient, dependsOn: 'classes', type: JavaExec) {
+    main = 'NettyClient'
+    classpath = sourceSets.main.runtimeClasspath
+    systemProperties System.getProperties()
+}
+
 repositories {
     mavenCentral()
 }
 
 dependencies {
     compile 'io.reactivex:rxjava:1.0.+'
-    compile 'io.reactivex:rxnetty:0.+'
+    compile 'io.netty:netty-all:4.1+'
 }
