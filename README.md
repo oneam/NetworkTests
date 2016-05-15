@@ -7,11 +7,11 @@ socket IO.
 
 My Conclusions:
 
-* Development platform accounts for 25-50% throughput difference. (C being fastest)
+* Development platform accounts for 25-50% throughput difference. (C and Rust being fastest)
 * Asynchronous IO only gave a performance boost when dealing with 1000s of open connections.
-  * A persistent thread connected a synchronous socket gives much higher throughput.
-* Full duplex communication provides up to a 1000% improvment on all platforms (except Go, which fell apart after atempting full duplex).
-  * Full duplex means read and write happen simltaneously and multiple requests can be "on the wire" simultaneously.
+  * A persistent thread connected to a synchronous socket gives much higher throughput.
+* Full duplex communication provides up to a 1000% improvement on all platforms (except Go, which fell apart after attempting full duplex).
+  * Full duplex means read and write happen simultaneously and multiple requests can be "on the wire" simultaneously.
 * Performance appears to be limited by the number of calls to read() and write()
   * By reading a large buffer of data and extracting all requests from that buffer you can greatly improve throughput.
 
@@ -61,6 +61,21 @@ Starts an echo server that listens on port 4726.
 
 ```
 cd src/main/c
+make
+bin/echo_client
+```
+Starts an echo client that connects to localhost port 4726.
+
+### Rust
+```
+cd src/main/rust
+make
+bin/echo_server
+```
+Starts an echo server that listens on port 4726.
+
+```
+cd src/main/rust
 make
 bin/echo_client
 ```
